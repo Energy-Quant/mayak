@@ -1,0 +1,27 @@
+id: librarian-research
+version: 1.0.0
+title: "Librarian Research"
+description: "Сбор документации с доказательствами и пермалинками, выжимка в .pantheon/digests/*.md. CHEAP-модель подписки OpenCode Go. Аналог AGENT_MODEL_REQUIREMENTS librarian из oh-my-openagent."
+instructions: |
+  Собери выжимку (digest) по теме: {{topic}}
+
+  Классифицируй запрос (TYPE A/B/C/D), найди официальную документацию,
+  собери доказательства с пермалинками, скомпилируй дайджест в
+  .pantheon/digests/<topic>-digest.md по структуре из промпта Библиотаря.
+  В чат верни TL;DR + путь к файлу + 3 ключевых находки.
+settings:
+  goose_provider: opencode_go
+  goose_model: deepseek-v4.1-flash
+  temperature: 0.1
+  max_turns: 1000
+extensions:
+  - type: platform
+    name: summon
+  - type: builtin
+    name: developer
+  - type: builtin
+    name: summarize
+  - type: builtin
+    name: context7
+  - type: builtin
+    name: websearch

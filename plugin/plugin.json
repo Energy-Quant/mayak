@@ -1,0 +1,5 @@
+{
+  "name": "pantheon",
+  "version": "1.0.0",
+  "description": "Пантеон: read-only enforcement для Оракула/Библиотекаря, аудит tool-событий и регистрация ролей в pantheon.db"
+}

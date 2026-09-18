@@ -1,0 +1,24 @@
+id: oracle-consult
+version: 1.0.0
+title: "Oracle Consultation"
+description: "Дорогая модель думает: план/архитектура/диагностика. Read-only + .pantheon/plans/*.md и .pantheon/analysis/*.md. Аналог AGENT_MODEL_REQUIREMENTS oracle из oh-my-openagent."
+instructions: |
+  Проведи консультацию Оракула по задаче: {{task}}
+
+  Прочитай предоставленный контекст (пути файлов и выжимки Библиотаря перечислены
+  в задаче). Составь план в .pantheon/plans/ (или .pantheon/analysis/ для разборов),
+  верни резюме в чат по verbosity-спеке Оракула.
+settings:
+  goose_provider: opencode_go
+  goose_model: glm-5.3
+  temperature: 0.3
+  max_turns: 1000
+extensions:
+  - type: platform
+    name: summon
+  - type: builtin
+    name: developer
+  - type: builtin
+    name: summarize
+  - type: builtin
+    name: context7
