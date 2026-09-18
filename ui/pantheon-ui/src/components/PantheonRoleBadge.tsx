@@ -1,6 +1,4 @@
 // PantheonRoleBadge — индикатор активной личности (Патч 1 из плана)
-import React from "react";
-
 export interface BadgeProps {
   role: "goose" | "oracle" | "librarian" | string;
   model?: string;

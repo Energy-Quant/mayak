@@ -1,5 +1,5 @@
 // App — каркас: шапка с бейджем, вкладки Чат / Пантеон / Настройки, split-view
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import PantheonRoleBadge from "./components/PantheonRoleBadge";
 import AgentSettings from "./components/AgentSettings";
 import SplitPane from "./components/SplitPane";

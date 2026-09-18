@@ -32,7 +32,11 @@ export interface ValidationResult {
 }
 
 export const getChains = (): Promise<AgentChain[]> =>
-  invoke("get_agent_chains");
+  invoke<AgentChain[]>("get_agent_chains").catch((e) => {
+    // вне Tauri (браузер/dev) — демо-данные пресета подписки
+    console.warn("[pantheon] getChains fallback (не Tauri?):", String(e).slice(0, 80));
+    return structuredClone(PRESETS["OpenCode Go (подписка)"]);
+  });
 
 export const saveChain = (chain: AgentChain): Promise<void> =>
   invoke("save_agent_chain", {

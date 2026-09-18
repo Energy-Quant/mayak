@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: true
+  '@modelcontextprotocol/ext-apps': true
+onlyBuiltDependencies:
+  - esbuild
+  - '@modelcontextprotocol/ext-apps'

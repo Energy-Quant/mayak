@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import {
   AgentChain, Catalog, ChainStep, Role, PRESETS,
-  getCatalog, getChains, saveChain, validateStep,
+  getCatalog, getChains, saveChain,
 } from "../api";
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -29,7 +29,10 @@ function StepEditor(props: {
 
   const validate = async () => {
     setStatus(null);
-    const res = await import("../api").then((m) => m.validateStep(step));
+    const { validateStep } = await import("../api");
+    const res = await validateStep(step).catch((e) => ({
+      ok: false, status: null, error: `IPC недоступен: ${String(e).slice(0, 60)}`, latency_ms: 0,
+    }));
     setStatus({ ok: res.ok, text: res.ok ? `✅ ${res.latency_ms}ms` : `❌ ${res.error ?? res.status}` });
   };
 
@@ -55,6 +58,7 @@ export default function AgentSettings() {
   const [chains, setChains] = useState<AgentChain[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [msg, setMsg] = useState<string>("");
 
   useEffect(() => {
     getChains().then(setChains);
@@ -72,8 +76,13 @@ export default function AgentSettings() {
   };
 
   const saveAll = async () => {
-    await Promise.all(chains.map(saveChain));
-    setDirty(false);
+    try {
+      await Promise.all(chains.map(saveChain));
+      setDirty(false);
+      setMsg("Сохранено в pantheon.toml");
+    } catch (e) {
+      setMsg(`Ошибка сохранения: ${String(e).slice(0, 80)}`);
+    }
   };
 
   return (
@@ -101,7 +110,7 @@ export default function AgentSettings() {
               onUp={() => {
                 const fb = [...chain.fallbacks];
                 if (i === 0) {
-                  update(chain.role, { primary: fb[0], fallbacks: [chain.primary, ...fb.slice(1)] });
+                  update(chain.role, { role: chain.role, primary: fb[0], fallbacks: [chain.primary, ...fb.slice(1)] });
                 } else {
                   [fb[i - 1], fb[i]] = [fb[i], fb[i - 1]];
                   update(chain.role, { ...chain, fallbacks: fb });
@@ -121,7 +130,7 @@ export default function AgentSettings() {
       ))}
       <div className="controls" style={{ margin: 16 }}>
         <button className="primary" disabled={!dirty} onClick={saveAll}>
-          {dirty ? "Сохранить в pantheon.toml" : "Сохранено"}
+          {dirty ? "Сохранить в pantheon.toml" : msg || "Сохранено"}
         </button>
       </div>
     </div>

@@ -35,7 +35,11 @@ async fn get_provider_catalog() -> Result<Catalog, String> {
             m.iter()
                 .filter_map(|(k, v)| {
                     let en = v.get("enabled").and_then(|e| e.as_bool()).unwrap_or(false);
-                    en.then(|| k.as_str().to_string())
+                    if en {
+                        k.as_str().map(|s| s.to_string())
+                    } else {
+                        None
+                    }
                 })
                 .collect()
         })
