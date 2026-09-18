@@ -19,6 +19,37 @@ export interface CatalogModel {
   context_limit?: number;
 }
 
+export interface ExtensionInfo {
+  name: string;
+  enabled: boolean;
+  description: string;
+  bundled: boolean;
+}
+
+export interface ConfigSummary {
+  active_provider: string;
+  goose_model: string;
+  goose_provider: string;
+  goose_mode: string;
+  extensions: ExtensionInfo[];
+}
+
+export interface SessionRow {
+  id: string;
+  title: string;
+  session_type: string;
+  updated_at: string;
+  total_tokens: number;
+  running: boolean;
+}
+
+export interface RecipeRow {
+  file: string;
+  title: string;
+  description: string;
+  path: string;
+}
+
 export interface Catalog {
   providers: string[];
   modelsByProvider: Record<string, CatalogModel[]>;
@@ -56,6 +87,23 @@ export const getRecentRuns = (): Promise<
 export const getArtifacts = (): Promise<
   { kind: string; path: string; topic: string; created_at: string }[]
 > => invoke("get_artifacts");
+
+export const getConfigSummary = (): Promise<ConfigSummary> =>
+  invoke("get_config_summary");
+
+export const toggleExtension = (name: string, enabled: boolean): Promise<void> =>
+  invoke("toggle_extension", { name, enabled });
+
+export const setActiveModel = (provider: string, model: string): Promise<void> =>
+  invoke("set_active_model", { provider, model });
+
+export const setGooseMode = (mode: string): Promise<void> =>
+  invoke("set_goose_mode", { mode });
+
+export const listSessions = (onlyRunning = false): Promise<SessionRow[]> =>
+  invoke("list_sessions", { onlyRunning });
+
+export const listRecipes = (): Promise<RecipeRow[]> => invoke("list_recipes");
 
 // Пресеты цепочек (rev 2): OpenCode Go подписка по умолчанию
 export const PRESETS: Record<string, AgentChain[]> = {

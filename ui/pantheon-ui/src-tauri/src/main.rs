@@ -2,6 +2,7 @@
 //! sidecar: goose serve (ACP) — подключение на стороне фронтенда (@aaif/goose-acp-client)
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod config;
 mod db;
 mod pantheon;
 
@@ -189,8 +190,74 @@ fn get_recent_runs() -> Result<Vec<db::RunRow>, String> {
 }
 
 #[tauri::command]
-fn get_artifacts() -> Result<Vec<serde_json::Value>, String> {
-    let conn = db::open()?;
+fn get_config_summary() -> Result<serde_json::Value, String> {
+    let s = config::read_summary()?;
+    Ok(serde_json::json!({
+        "active_provider": s.active_provider,
+        "goose_model": s.goose_model,
+        "goose_provider": s.goose_provider,
+        "goose_mode": s.goose_mode,
+        "extensions": s.extensions,
+    }))
+}
+
+#[tauri::command]
+fn toggle_extension(name: String, enabled: bool) -> Result<(), String> {
+    config::toggle_extension(&name, enabled)
+}
+
+#[tauri::command]
+fn set_active_model(provider: String, model: String) -> Result<(), String> {
+    config::set_active_model(&provider, &model)
+}
+
+#[tauri::command]
+fn set_goose_mode(mode: String) -> Result<(), String> {
+    config::set_goose_mode(&mode)
+}
+
+/// История сессий (паритет: История сессий + список ЧАТЫ)
+#[tauri::command]
+fn list_sessions(only_running: Option<bool>) -> Result<Vec<serde_json::Value>, String> {
+    db::list_sessions(only_running.unwrap_or(false))
+}
+
+/// Рецепты: файлы ~/.config/goose/recipes/*.yaml
+#[tauri::command]
+fn list_recipes() -> Result<Vec<serde_json::Value>, String> {
+    let dir = dirs::home_dir()
+        .ok_or("no home")?
+        .join(".config/goose/recipes");
+    let mut out = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().map(|x| x == "yaml" || x == "yml").unwrap_or(false) {
+                let raw = std::fs::read_to_string(&p).unwrap_or_default();
+                let title = raw
+                    .lines()
+                    .find(|l| l.starts_with("title:"))
+                    .map(|l| l.trim_start_matches("title:").trim().to_string())
+                    .unwrap_or_default();
+                let description = raw
+                    .lines()
+                    .find(|l| l.starts_with("description:"))
+                    .map(|l| l.trim_start_matches("description:").trim().to_string())
+                    .unwrap_or_default();
+                out.push(serde_json::json!({
+                    "file": p.file_name().unwrap_or_default().to_string_lossy(),
+                    "title": title,
+                    "description": description,
+                    "path": p.to_string_lossy(),
+                }));
+            }
+        }
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn get_artifacts() -> Result<Vec<serde_json::Value>, String> {    let conn = db::open()?;
     let mut stmt = conn
         .prepare("SELECT kind, path, coalesce(topic,''), created_at FROM artifacts
                   ORDER BY created_at DESC LIMIT 30")
@@ -219,6 +286,12 @@ fn main() {
             save_agent_chain,
             get_recent_runs,
             get_artifacts,
+            get_config_summary,
+            toggle_extension,
+            set_active_model,
+            set_goose_mode,
+            list_sessions,
+            list_recipes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running pantheon-ui");

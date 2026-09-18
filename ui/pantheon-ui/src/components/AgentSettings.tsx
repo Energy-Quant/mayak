@@ -54,7 +54,7 @@ function StepEditor(props: {
   );
 }
 
-export default function AgentSettings() {
+export function AgentSettings() {
   const [chains, setChains] = useState<AgentChain[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [dirty, setDirty] = useState(false);
