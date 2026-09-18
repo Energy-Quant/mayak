@@ -1,19 +1,20 @@
-// Sidebar — паритет оригинала Goose Desktop
+// Sidebar — паритет оригинала Goose Desktop (контурные SVG-иконки)
 import { useEffect, useState } from "react";
 import { listSessions } from "../api";
+import { Icon, IconName } from "./Icon";
 
 export type Page =
   | "chat" | "recipes" | "extensions" | "scheduler"
   | "history" | "apps" | "settings";
 
-const NAV: { id: Page; label: string; icon: string }[] = [
-  { id: "chat", label: "Новый чат", icon: "✚" },
-  { id: "recipes", label: "Рецепты", icon: "📋" },
-  { id: "settings", label: "Настройки", icon: "⚙" },
-  { id: "apps", label: "Приложения", icon: "▣" },
-  { id: "extensions", label: "Расширения", icon: "◫" },
-  { id: "scheduler", label: "Планировщик", icon: "⏱" },
-  { id: "history", label: "История сессий", icon: "🕘" },
+const NAV: { id: Page; label: string; icon: IconName }[] = [
+  { id: "chat", label: "Новый чат", icon: "plus" },
+  { id: "recipes", label: "Рецепты", icon: "clipboard" },
+  { id: "settings", label: "Настройки", icon: "settings" },
+  { id: "apps", label: "Приложения", icon: "app" },
+  { id: "extensions", label: "Расширения", icon: "puzzle" },
+  { id: "scheduler", label: "Планировщик", icon: "clock" },
+  { id: "history", label: "История сессий", icon: "history" },
 ];
 
 export default function Sidebar(props: {
@@ -31,7 +32,7 @@ export default function Sidebar(props: {
   return (
     <aside className="sidebar">
       <div className="sidebar-top">
-        <button className="logo-btn" title="Пантеон">🪿</button>
+        <button className="logo-btn" title="Пантеон"><Icon name="goose" size={20} /></button>
       </div>
       <nav>
         {NAV.map((n) => (
@@ -40,7 +41,7 @@ export default function Sidebar(props: {
             className={`nav-item${props.page === n.id ? " active" : ""}`}
             onClick={() => props.onNavigate(n.id)}
           >
-            <span className="nav-icon">{n.icon}</span> {n.label}
+            <span className="nav-icon"><Icon name={n.icon} /></span> {n.label}
           </button>
         ))}
       </nav>
@@ -58,7 +59,7 @@ export default function Sidebar(props: {
         className={`nav-item bottom${props.page === "settings" ? " active" : ""}`}
         onClick={() => props.onNavigate("settings")}
       >
-        <span className="nav-icon">⚙</span> Настройки
+        <span className="nav-icon"><Icon name="settings" /></span> Настройки
       </button>
     </aside>
   );

@@ -57,14 +57,30 @@
 * { box-sizing: border-box; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
-  font-family: 'Inter', 'JetBrains Mono', system-ui, sans-serif;
+  font-family: system-ui, -apple-system, "Noto Sans", "Segoe UI", sans-serif;
+  font-size: 14px;
 }
+.mono, code, pre, .badge-meta { font-family: ui-monospace, "SFMono-Regular", monospace; }
 
-/* ── App shell: сайдбар + контент (паритет оригинала) ── */
-.app-shell { display: flex; height: 100vh; overflow: hidden; }
-.app-shell .split { flex: 1; height: 100vh; }
-.main-col { display: flex; flex-direction: column; height: 100vh; }
-.main-scroll { flex: 1; overflow-y: auto; }
+/* ── Титлбар (CSD): тонкая полоска без названия ── */
+.titlebar {
+  display: flex; align-items: center; height: 12px;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.titlebar-drag { flex: 1; height: 100%; }
+.titlebar-buttons { display: flex; height: 100%; }
+.tb-btn {
+  width: 40px; height: 100%; display: flex; align-items: center; justify-content: center;
+  background: none; border: none; color: var(--text-dim); cursor: pointer;
+}
+.tb-btn:hover { color: var(--text); background: var(--bg-surface); }
+.tb-btn.tb-close:hover { color: var(--accent-magenta); }
+.app-shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.app-body { display: flex; flex: 1; min-height: 0; }
+.app-body .split { flex: 1; min-height: 0; }
+.main-col { display: flex; flex-direction: column; min-height: 0; min-width: 0; flex: 1; }
+.main-scroll { flex: 1; overflow-y: auto; min-height: 0; }
 
 .sidebar {
   width: 230px; min-width: 230px; display: flex; flex-direction: column;
@@ -99,7 +115,7 @@ body {
 .chat-empty { color: var(--text-dim); font-size: 12px; padding: 6px 10px; }
 
 /* ── Общие страницы ── */
-.page { padding: 20px 28px; max-width: 980px; }
+.page { padding: 20px 28px; max-width: 1400px; width: 100%; margin: 0 auto; }
 .page h1 { font-size: 22px; margin: 4px 0 8px; }
 .page-desc { color: var(--text-dim); font-size: 13px; margin: 0 0 16px; }
 .row-actions { display: flex; gap: 8px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
@@ -115,7 +131,7 @@ body {
 .empty { color: var(--text-dim); text-align: center; padding: 40px 0; }
 .dim { color: var(--text-dim); }
 .small { font-size: 11px; }
-.mono { font-family: 'JetBrains Mono', monospace; }
+.mono { font-family: ui-monospace, monospace; }
 
 /* ── Таблицы (История сессий) ── */
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -193,7 +209,7 @@ button.danger { border-color: var(--accent-magenta); color: var(--accent-magenta
 .role-badge[data-role="oracle"] .role-dot { background: var(--role-oracle); box-shadow: var(--glow-magenta); }
 .role-badge[data-role="goose"] .role-dot { background: var(--role-goose); }
 .role-badge[data-role="librarian"] .role-dot { background: var(--role-librarian); }
-.role-badge .role-meta { color: var(--text-dim); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+.role-badge .role-meta { color: var(--text-dim); font-family: ui-monospace, monospace; font-size: 11px; }
 .role-badge.fallback-fired { animation: fbflash 1.2s ease-in-out 3; }
 @keyframes fbflash { 50% { border-color: var(--accent-gold); box-shadow: 0 0 14px rgba(246,193,119,.4); } }
 

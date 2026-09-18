@@ -1,6 +1,7 @@
-// App — каркас паритета: сайдбар оригинала + страницы
+// App — каркас паритета: титлбар + сайдбар + страницы
 import { useEffect, useState } from "react";
 import Sidebar, { Page } from "./components/Sidebar";
+import TitleBar from "./components/TitleBar";
 import PantheonRoleBadge from "./components/PantheonRoleBadge";
 import SplitPane from "./components/SplitPane";
 import { Extensions } from "./components/Extensions";
@@ -27,6 +28,8 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <TitleBar />
+      <div className="app-body">
       <Sidebar page={page} onNavigate={setPage} onOpenSession={() => setPage("chat")} />
       <SplitPane
         left={
@@ -64,6 +67,7 @@ export default function App() {
         right={subagentSession ? <div className="page">Сессия субагента: {subagentSession}</div> : undefined}
         onCloseRight={() => setSubagentSession(null)}
       />
+      </div>
     </div>
   );
 }
