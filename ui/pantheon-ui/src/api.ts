@@ -31,6 +31,7 @@ export interface ExtensionInfo {
 }
 
 export interface ConfigSummary {
+  providers?: string[];
   active_provider: string;
   goose_model: string;
   goose_provider: string;
@@ -134,3 +135,8 @@ export const PRESETS: Record<string, AgentChain[]> = {
       fallbacks: [{ provider: "ollama_cloud", model: "deepseek-v4-flash:0731" }] },
   ],
 };
+
+// ── Планировщик / Приложения (goose data-dir) ──
+export const getScheduledJobs = () => invoke<any[]>("get_scheduled_jobs");
+export const getStoredApps = () => invoke<string[]>("list_stored_apps");
+export const openApp = (name: string) => invoke<void>("open_app", { name });

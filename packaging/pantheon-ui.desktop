@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Пантеон
+Comment=Мультиагентный клиент goose (Пантеон)
+Exec=pantheon-ui %u
+Icon=pantheon-ui
+Categories=Development;Utility;
+StartupWMClass=pantheon-ui

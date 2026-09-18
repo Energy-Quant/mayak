@@ -1,6 +1,6 @@
-// SubagentStream — live-стрим субагента в правой панели split-view.
-// MVP: собственное ACP-подключение к тому же goose serve с загрузкой сессии (session/load) и ретрансляцией updates.
-// Инфраструктура подключения классом AcpStreamReader — ниже (как нужен desktop Goose для split-pane).
+// SubagentStream — split-view live-стрим субагента.
+// Реализация (v2): goose в реальном времени пишет сообщения субагента в sessions.db —
+// опрос 2с даёт живой поток. ACP-стрим субагента (отдельный ws + session/load) — следующий шаг.
 import { useEffect, useRef, useState } from "react";
 import { isTauri, safeInvoke } from "../acp";
 
@@ -29,7 +29,7 @@ export default function SubagentStream({ sessionId }: { sessionId: string }) {
         const rows = await safeInvoke<any[]>("list_subagent_messages", { sessionId });
         if (alive) setEvents(rows.map((r: any) => ({ t: `[${r.role}] ${String(r.content).slice(0, 300)}` })));
       } catch { /* тихо */ }
-    }, 4000);
+    }, 2000);
     return () => { alive = false; clearInterval(t); };
   }, [sessionId]);
 

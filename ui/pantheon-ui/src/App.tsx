@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import Sidebar, { Page } from "./components/Sidebar";
 import TitleBar from "./components/TitleBar";
 import SubagentStream from "./components/SubagentStream";
+import Scheduler from "./components/Scheduler";
+import AppsPage from "./components/AppsPage";
 import SplitPane from "./components/SplitPane";
 import { Extensions } from "./components/Extensions";
 import { Settings } from "./components/Settings";
@@ -14,7 +16,15 @@ export default function App() {
   const [subagentSession, setSubagentSession] = useState<string | null>(null);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSubagentSession(null); };
+    (window as any).__pantheon_nav = (p: string) => setPage(p as Page);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSubagentSession(null);
+      if ((e.ctrlKey || e.metaKey) && ["1","2","3","4","5","6","7"].includes(e.key)) {
+        e.preventDefault();
+        const order: Page[] = ["chat","recipes","settings","apps","extensions","scheduler","history"];
+        setPage(order[Number(e.key) - 1]);
+      }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
@@ -35,12 +45,8 @@ export default function App() {
               {page === "history" && <History />}
               {page === "recipes" && <Recipes />}
               {page === "settings" && <Settings />}
-              {page === "apps" && (
-                <div className="page"><h1>Приложения</h1><div className="empty">MCP-приложения — следующая итерация паритета</div></div>
-              )}
-              {page === "scheduler" && (
-                <div className="page"><h1>Планировщик</h1><div className="empty">Расписания рецептов — следующая итерация паритета</div></div>
-              )}
+              {page === "apps" && <AppsPage />}
+              {page === "scheduler" && <Scheduler />}
             </main>
           </div>
         }

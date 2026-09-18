@@ -24,6 +24,7 @@ pub struct GooseConfigSummary {
     pub goose_provider: String,
     pub goose_mode: String,
     pub extensions: Vec<ExtensionEntry>,
+    pub providers: Vec<String>,
 }
 
 pub fn read_summary() -> Result<GooseConfigSummary, String> {
@@ -47,7 +48,18 @@ pub fn read_summary() -> Result<GooseConfigSummary, String> {
                 .collect()
         })
         .unwrap_or_default();
+    let providers = v
+        .get("providers")
+        .and_then(|m| m.as_mapping())
+        .map(|m| {
+            m.iter()
+                .filter(|(_, e)| e.get("enabled").and_then(|b| b.as_bool()).unwrap_or(false))
+                .map(|(k, _)| k.as_str().unwrap_or("?").to_string())
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(GooseConfigSummary {
+        providers,
         active_provider: v
             .get("active_provider")
             .and_then(|s| s.as_str())

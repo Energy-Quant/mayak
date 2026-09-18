@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { AgentSettings } from "./AgentSettings";
 import { Toggle } from "./Extensions";
 import { ConfigSummary, getConfigSummary, setActiveModel, setGooseMode } from "../api";
+import Keyboard from "./Keyboard";
+import Auth from "./Auth";
 // ConfigSummary используется в ChatTab
 
 const TABS = [
@@ -44,8 +46,8 @@ export function Settings() {
       {tab === "pantheon" && <AgentSettings />}
       {tab === "ui" && <Stub title="Пользовательский интерфейс" note="Локальные модели (HuggingFace) и Подключение к серверу" />}
       {tab === "programs" && <Stub title="Программы" note="Редактирование промптов: system.md, compaction.md, subagent_system.md, apps_create.md, apps_iterate.md, permission_judge.md, tiny_model_system.md" />}
-      {tab === "keys" && <Stub title="Клавиатура" note="Глобальные горячие клавиши (Ctrl+Alt+G), приложений (Ctrl+T/N/D/,) и поиска" />}
-      {tab === "auth" && <Stub title="Авторизация" note="Ключи провайдеров (keyring service=goose)" />}
+      {tab === "keys" && <Keyboard />}
+      {tab === "auth" && <Auth />}
       {tab === "app" && <Stub title="Приложение" note="Конфигурация (config.yaml), параметры трея, тема, язык" />}
     </div>
   );

@@ -294,6 +294,25 @@ fn get_artifacts() -> Result<Vec<serde_json::Value>, String> {    let conn = db:
     Ok(rows)
 }
 
+#[tauri::command]
+fn get_scheduled_jobs() -> Result<Vec<serde_json::Value>, String> {
+    db::get_scheduled_jobs()
+}
+
+#[tauri::command]
+fn list_stored_apps() -> Result<Vec<String>, String> {
+    db::list_stored_apps()
+}
+
+#[tauri::command]
+fn open_app(name: String) -> Result<(), String> {
+    use std::process::Command;
+    let path = dirs::home_dir().ok_or("no home")?
+        .join(format!(".local/share/goose/apps/{name}.html"));
+    if !path.exists() { return Err(format!("{} не найден", name)); }
+    Command::new("xdg-open").arg(&path).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -310,6 +329,9 @@ fn main() {
             list_sessions,
             list_recipes,
             list_subagent_messages,
+            get_scheduled_jobs,
+            list_stored_apps,
+            open_app,
             start_goose_server,
             stop_goose_server,
         ])

@@ -1,0 +1,19 @@
+# Maintainer: Quant <quant@local>
+# Пантеон UI — Tauri клиент Пантеона (krab-пакет pantheon-ui)
+pkgname=pantheon-ui-bin
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Пантеон — мультиагентный клиент goose (Tauri 2)"
+arch=('x86_64')
+url="https://local/pantheon"
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'sqlite')
+optdepends=('goose-desktop: сервер goose serve')
+options=('!strip')
+source=()
+sha256sums=()
+package() {
+    install -Dm755 "/home/quant/pantheon/packaging/pantheon-ui" "${pkgdir}/usr/bin/pantheon-ui"
+    install -Dm644 "/home/quant/pantheon/packaging/pantheon-ui.desktop" "${pkgdir}/usr/share/applications/pantheon-ui.desktop"
+    install -Dm644 "/home/quant/pantheon/packaging/icon.png" "${pkgdir}/usr/share/icons/hicolor/512x512/apps/pantheon-ui.png"
+}

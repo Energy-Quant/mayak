@@ -139,3 +139,29 @@ pub fn list_subagent_messages(session_id: &str) -> Result<Vec<serde_json::Value>
         .collect();
     Ok(rows)
 }
+
+/// Планировщик goose: ~/.local/share/goose/schedule.json (Vec<ScheduledJob>)
+pub fn get_scheduled_jobs() -> Result<Vec<serde_json::Value>, String> {
+    use std::fs;
+    let path = dirs::home_dir().ok_or("no home")?
+        .join(".local/share/goose/schedule.json");
+    if !path.exists() { return Ok(vec![]); }
+    let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&raw).map_err(|e| e.to_string())
+}
+
+/// Приложения goose: HTML-файлы в ~/.local/share/goose/apps
+pub fn list_stored_apps() -> Result<Vec<String>, String> {
+    use std::fs;
+    let dir = dirs::home_dir().ok_or("no home")?.join(".local/share/goose/apps");
+    let mut out = vec![];
+    if dir.exists() {
+        for e in fs::read_dir(&dir).map_err(|e| e.to_string())? {
+            let p = e.map_err(|e| e.to_string())?.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("html") {
+                out.push(p.file_stem().and_then(|s| s.to_str()).unwrap_or("?").to_string());
+            }
+        }
+    }
+    Ok(out)
+}
