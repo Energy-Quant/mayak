@@ -1,6 +1,7 @@
 // Chat — ACP-чат + правая панель: TODO (динамически из session/update) + субагенты (sessions.db)
 import { useEffect, useRef, useState } from "react";
 import { AcpSession, ChatMessage, TodoItem, SubagentRow, listSubagents } from "../acp";
+import { renderMarkdown } from "../markdown";
 import PantheonRoleBadge from "./PantheonRoleBadge";
 import { Icon } from "./Icon";
 
@@ -11,6 +12,7 @@ export function ChatPage() {
   const [subagents, setSubagents] = useState<SubagentRow[]>([]);
   const [status, setStatus] = useState<"idle" | "starting" | "ready" | "error">("idle");
   const [error, setError] = useState("");
+  const [streaming, setStreaming] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<AcpSession | null>(null);
 
@@ -48,8 +50,10 @@ export function ChatPage() {
     const text = input.trim();
     if (!text || !sessionRef.current || status !== "ready") return;
     setInput("");
+    setStreaming(true);
     try { await sessionRef.current.prompt(text); }
     catch (e) { setError(String(e).slice(0, 120)); }
+    finally { setStreaming(false); }
   };
 
   useEffect(() => () => sessionRef.current?.stop(), []);
@@ -61,7 +65,7 @@ export function ChatPage() {
       <div className="chat-col">
         <header className="topbar">
           <PantheonRoleBadge role="goose" model="opencode_go/glm-5.3-flash" cost="MEDIUM" />
-          <span className={`chat-state ${status}`}>{statusLabel(status)}</span>
+          <span className={`chat-state ${status}`}>{statusLabel(status)}{streaming && " · ответ…"}</span>
         </header>
         <div className="chat-scroll" ref={scrollerRef}>
           {hasConversation === false && (
@@ -83,7 +87,7 @@ export function ChatPage() {
             </div>
           )}
           {error && <div className="error-banner">⚠ {error}</div>}
-          <MessageList messages={messages} onSubagent={(id) => window.dispatchEvent(new CustomEvent("open-subagent", { detail: id }))} />
+          <MessageList messages={messages} streaming={streaming} onSubagent={(id) => window.dispatchEvent(new CustomEvent("open-subagent", { detail: id }))} onCancel={() => sessionRef.current?.cancel()} />
         </div>
         <div className="chat-input-row">
           <textarea
@@ -139,7 +143,7 @@ function statusLabel(s: string) {
   return { idle: "не подключено", starting: "подключение…", ready: "готов · glm-5.3-flash", error: "ошибка" }[s] ?? s;
 }
 
-function MessageList(props: { messages: ChatMessage[]; onSubagent: (id: string) => void }) {
+function MessageList(props: { messages: ChatMessage[]; streaming: boolean; onSubagent: (id: string) => void; onCancel: () => void }) {
   return (
     <>
       {props.messages.map((m, i) => (
@@ -156,10 +160,20 @@ function MessageList(props: { messages: ChatMessage[]; onSubagent: (id: string) 
               <div className="tool-body">{m.text.slice(0, 400)}</div>
             </div>
           ) : (
-            <div className="bubble">{m.text}</div>
+            <div className="bubble md-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
           )}
         </div>
       ))}
+      {props.streaming && (
+        <div className={`msg msg-agent streaming`}>
+          <div className="bubble"><span className="dots"><i /><i /><i /></span></div>
+        </div>
+      )}
+      {props.streaming && (
+        <button className="cancel-btn" onClick={props.onCancel}>⏹ Прервать</button>
+      )}
     </>
   );
 }
+
+export default ChatPage;

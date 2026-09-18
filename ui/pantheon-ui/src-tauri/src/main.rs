@@ -236,6 +236,11 @@ fn list_sessions(only_running: Option<bool>) -> Result<Vec<serde_json::Value>, S
 
 /// Рецепты: файлы ~/.config/goose/recipes/*.yaml
 #[tauri::command]
+fn list_subagent_messages(session_id: String) -> Result<Vec<serde_json::Value>, String> {
+    db::list_subagent_messages(&session_id)
+}
+
+#[tauri::command]
 fn list_recipes() -> Result<Vec<serde_json::Value>, String> {
     let dir = dirs::home_dir()
         .ok_or("no home")?
@@ -304,6 +309,7 @@ fn main() {
             set_goose_mode,
             list_sessions,
             list_recipes,
+            list_subagent_messages,
             start_goose_server,
             stop_goose_server,
         ])

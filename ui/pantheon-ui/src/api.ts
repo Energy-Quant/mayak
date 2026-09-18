@@ -1,5 +1,9 @@
-// pantheon-ui: типы и bridge к Rust-бэкенду (Tauri invoke)
-import { invoke } from "@tauri-apps/api/core";
+// pantheon-ui: типы и bridge к Rust-бэкенду (Tauri invoke, с безопасным fallback вне Tauri)
+import { isTauri } from "./acp";
+const invoke = <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> =>
+  isTauri()
+    ? import("@tauri-apps/api/core").then((m) => m.invoke<T>(cmd, args))
+    : Promise.reject(new Error("не в Tauri"));
 
 export type Role = "goose" | "oracle" | "librarian";
 

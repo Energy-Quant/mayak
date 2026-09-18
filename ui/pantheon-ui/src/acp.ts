@@ -3,6 +3,12 @@ import { client, CLIENT_METHODS } from "@agentclientprotocol/sdk";
 import { createWebSocketStream } from "@agentclientprotocol/sdk/experimental/ws-client";
 import { invoke } from "@tauri-apps/api/core";
 
+// Gate: вне Tauri (браузер/dev) invoke гарантированно не работает
+export const isTauri = (): boolean =>
+  typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+export const safeInvoke = <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> =>
+  isTauri() ? invoke<T>(cmd, args) : Promise.reject(new Error("не в Tauri"));
+
 export interface ChatMessage {
   id: string;
   role: "user" | "agent" | "tool";

@@ -57,8 +57,7 @@ pub fn recent_runs() -> Result<Vec<RunRow>, String> {
 }
 
 /// История сессий из sessions.db goose (read-only); running — из pantheon.db
-pub fn list_sessions(only_running: bool) -> Result<Vec<serde_json::Value>, String> {
-    let running: std::collections::HashSet<String> = open()
+pub fn list_sessions(only_running: bool) -> Result<Vec<serde_json::Value>, String> {    let running: std::collections::HashSet<String> = open()
         .map(|c| {
             c.prepare("SELECT session_id FROM runs WHERE status='running'")
                 .and_then(|mut s| {
@@ -117,4 +116,26 @@ pub fn kv_set(key: &str, value: &str) {
             rusqlite::params![key, value],
         );
     }
+}
+
+/// Последние сообщения субагента (для split-view live-вида)
+pub fn list_subagent_messages(session_id: &str) -> Result<Vec<serde_json::Value>, String> {
+    let path = dirs::home_dir()
+        .ok_or("no home")?
+        .join(".local/share/goose/sessions/sessions.db");
+    let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT role, substr(content,1,300) AS content FROM messages
+             WHERE session_id=?1 ORDER BY id DESC LIMIT 60",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([session_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .map(|(role, content)| serde_json::json!({ "role": role, "content": content }))
+        .collect();
+    Ok(rows)
 }

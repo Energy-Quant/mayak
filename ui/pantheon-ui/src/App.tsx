@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Sidebar, { Page } from "./components/Sidebar";
 import TitleBar from "./components/TitleBar";
+import SubagentStream from "./components/SubagentStream";
 import SplitPane from "./components/SplitPane";
 import { Extensions } from "./components/Extensions";
 import { Settings } from "./components/Settings";
@@ -43,7 +44,17 @@ export default function App() {
             </main>
           </div>
         }
-        right={subagentSession ? <div className="page">Сессия субагента: {subagentSession}</div> : undefined}
+        right={
+          subagentSession ? (
+            <div className="subagent-view">
+              <div className="subagent-view-head">
+                <span className="chat-dot on" /> Субагент · session {subagentSession}
+                <small className="dim"> (live-стрим придёт с ACP-событиями этой сессии)</small>
+              </div>
+              <SubagentStream sessionId={subagentSession} />
+            </div>
+          ) : undefined
+        }
         onCloseRight={() => setSubagentSession(null)}
       />
       </div>
