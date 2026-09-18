@@ -19,13 +19,15 @@ export function ChatPage() {
     scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight });
   }, [messages.length]);
 
-  // субагенты: опрос при открытии и раз в 10с — список появляется динамически
+  // субагенты: только для активного разговора (после первого сообщения) — появляется динамически
+  const hasConversation = messages.length > 0;
   useEffect(() => {
+    if (!hasConversation) { setSubagents([]); return; }
     const load = () => listSubagents().then(setSubagents).catch(() => setSubagents([]));
     load();
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
-  }, []);
+  }, [hasConversation]);
 
   const connect = async () => {
     setError("");
@@ -62,13 +64,24 @@ export function ChatPage() {
           <span className={`chat-state ${status}`}>{statusLabel(status)}</span>
         </header>
         <div className="chat-scroll" ref={scrollerRef}>
-          {status === "idle" && (
-            <div className="chat-placeholder">
-              <div className="chat-placeholder-icon"><Icon name="goose" size={44} /></div>
-              <button className="primary" onClick={connect}>Подключить goose serve (ACP)</button>
+          {hasConversation === false && (
+            <div className="chat-center">
+              <div className="chat-hero">
+                <div className="chat-placeholder-icon"><Icon name="goose" size={44} /></div>
+                {status === "idle" ? (
+                  <>
+                    <button className="primary" onClick={connect}>Подключить goose serve (ACP)</button>
+                    <div className="dim small">после подключения панель задач и субагентов появится справа</div>
+                  </>
+                ) : (
+                  <>
+                    <div>Готов. Начните разговор.</div>
+                    <div className="dim small">панель задач и субагентов появится справа</div>
+                  </>
+                )}
+              </div>
             </div>
           )}
-          {status === "starting" && <div className="empty">Запуск goose serve…</div>}
           {error && <div className="error-banner">⚠ {error}</div>}
           <MessageList messages={messages} onSubagent={(id) => window.dispatchEvent(new CustomEvent("open-subagent", { detail: id }))} />
         </div>
@@ -87,7 +100,7 @@ export function ChatPage() {
         </div>
       </div>
 
-      <aside className="chat-right">
+      <aside className="chat-right" style={{ display: hasConversation ? undefined : "none" }}>
         {todos && (
           <section className="rail-card">
             <h3><Icon name="clipboard" /> Задачи</h3>
@@ -116,11 +129,6 @@ export function ChatPage() {
               ))}
             </ul>
           </section>
-        )}
-        {!todos && subagents.length === 0 && (
-          <div className="rail-hint">
-            Задачи и субагенты появятся здесь, когда агент начнёт работу
-          </div>
         )}
       </aside>
     </div>
