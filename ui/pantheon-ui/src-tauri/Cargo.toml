@@ -1,0 +1,23 @@
+[package]
+name = "pantheon-ui"
+version = "0.1.0"
+edition = "2021"
+description = "Пантеон — Tauri-клиент мультиагентных личностей goose"
+authors = ["Quant"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+toml = "0.9"
+rusqlite = { version = "0.32", features = ["bundled"] }
+dirs = "5"
+tokio = { version = "1", features = ["full"] }
+
+[profile.release]
+lto = true
+strip = true

@@ -1,0 +1,105 @@
+/* pantheon-ui — тема DreamWave (rev 2)
+ * Три темы: dreamwave-night (default) | tokyonight-storm | rosepine-moon
+ * Токены из плана, п.10. Переключение: document.documentElement.dataset.theme = '...' */
+
+:root, [data-theme="dreamwave-night"] {
+  --bg: #0d0221;
+  --bg-surface: #14102e;
+  --text: #e0def4;
+  --text-dim: #8b7fb8;
+  --accent-magenta: #f6019d;
+  --accent-violet: #7b68ee;
+  --accent-cyan: #66d9e8;
+  --accent-gold: #f6c177;
+  --accent-green: #9ece6a;
+  --border: #2a1b4d;
+  --glow-magenta: 0 0 12px rgba(246, 1, 157, .45);
+  --glow-cyan: 0 0 10px rgba(102, 217, 232, .35);
+}
+
+[data-theme="tokyonight-storm"] {
+  --bg: #1a1b26;
+  --bg-surface: #1f2335;
+  --text: #c0caf5;
+  --text-dim: #565f89;
+  --accent-magenta: #bb9af7;
+  --accent-violet: #7aa2f7;
+  --accent-cyan: #7dcfff;
+  --accent-gold: #e0af68;
+  --accent-green: #9ece6a;
+  --border: #292e42;
+  --glow-magenta: 0 0 10px rgba(187, 154, 247, .35);
+  --glow-cyan: 0 0 8px rgba(125, 207, 255, .3);
+}
+
+[data-theme="rosepine-moon"] {
+  --bg: #191724;
+  --bg-surface: #1f1d2e;
+  --text: #e0def4;
+  --text-dim: #908caa;
+  --accent-magenta: #eb6f92;   /* love */
+  --accent-violet: #c4a7e7;    /* iris */
+  --accent-cyan: #9ccfd8;      /* foam */
+  --accent-gold: #f6c177;      /* gold */
+  --accent-green: #9ece6a;
+  --border: #403d52;
+  --glow-magenta: 0 0 10px rgba(235, 111, 146, .3);
+  --glow-cyan: 0 0 8px rgba(156, 207, 216, .25);
+}
+
+/* Цвета личностей — семантически стабильны во всех темах */
+:root {
+  --role-goose: var(--accent-cyan);      /* 🪿 оркестратор */
+  --role-oracle: var(--accent-magenta);  /* 🔥 мыслитель */
+  --role-librarian: var(--accent-violet);/* 📚 исследователь */
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: 'Inter', 'JetBrains Mono', system-ui, sans-serif;
+}
+
+/* ── PantheonRoleBadge ─────────────────────────────── */
+.role-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 12px; border-radius: 999px;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  font-size: 12px;
+}
+.role-badge .role-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--role-color); box-shadow: var(--glow-cyan); }
+.role-badge[data-role="oracle"] .role-dot { background: var(--role-oracle); box-shadow: var(--glow-magenta); }
+.role-badge[data-role="goose"] .role-dot { background: var(--role-goose); }
+.role-badge[data-role="librarian"] .role-dot { background: var(--role-librarian); }
+.role-badge .role-meta { color: var(--text-dim); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+.role-badge.fallback-fired { animation: fbflash 1.2s ease-in-out 3; }
+@keyframes fbflash { 50% { border-color: var(--accent-gold); box-shadow: 0 0 14px rgba(246,193,119,.4); } }
+
+/* ── SplitPane ─────────────────────────────────────── */
+.split { display: flex; height: 100vh; }
+.split > .pane { overflow-y: auto; min-width: 220px; }
+.split > .divider { width: 5px; cursor: col-resize; background: var(--border); transition: background .15s; }
+.split > .divider:hover { background: var(--accent-violet); }
+
+/* ── AgentSettings: fallback-селекторы ─────────────── */
+.chain-card { border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin: 12px; background: var(--bg-surface); }
+.chain-card h3 { margin: 0 0 4px; color: var(--role-color, var(--text)); }
+.chain-step { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.chain-step .arrow { color: var(--text-dim); font-family: monospace; }
+.chain-step .idx { width: 20px; text-align: center; color: var(--text-dim); font-size: 11px; }
+.chain-step select {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 10px; min-width: 170px;
+}
+.chain-step select:focus { outline: none; border-color: var(--accent-violet); box-shadow: var(--glow-cyan); }
+.chain-step .step-status { font-size: 11px; }
+.chain-step .step-status.ok { color: var(--accent-green); }
+.chain-step .step-status.fail { color: var(--accent-magenta); }
+.chain-card .controls { display: flex; gap: 8px; margin-top: 10px; }
+button {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 12px;
+}
+button:hover { border-color: var(--accent-violet); }
+button.primary { border-color: var(--accent-violet); box-shadow: var(--glow-cyan); }
+.preset-row { display: flex; gap: 8px; margin-bottom: 12px; }
