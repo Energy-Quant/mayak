@@ -7,6 +7,7 @@ import SplitPane from "./components/SplitPane";
 import { Extensions } from "./components/Extensions";
 import { Settings } from "./components/Settings";
 import { History, Recipes } from "./components/SimplePages";
+import { ChatPage } from "./components/Chat";
 import { getRecentRuns } from "./api";
 
 export default function App() {
@@ -43,14 +44,8 @@ export default function App() {
                 </span>
               )}
             </header>
-            <main className="main-scroll">
-              {page === "chat" && (
-                <div className="chat-placeholder">
-                  <div className="chat-placeholder-icon">🪿</div>
-                  <div>ACP-чат появится здесь (goose serve sidecar + @aaif/goose-acp-client)</div>
-                  <div className="dim small">Следующая итерация MVP</div>
-                </div>
-              )}
+            <main className="main-scroll chat-host">
+              {page === "chat" && <ChatPage />}
               {page === "extensions" && <Extensions />}
               {page === "history" && <History />}
               {page === "recipes" && <Recipes />}

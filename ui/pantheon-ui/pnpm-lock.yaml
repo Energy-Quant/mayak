@@ -11,6 +11,9 @@ importers:
       '@aaif/goose-acp-client':
         specifier: ^1.50.0
         version: 1.50.0(@agentclientprotocol/sdk@1.4.0(zod@4.6.5))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@agentclientprotocol/sdk':
+        specifier: ^1.4.0
+        version: 1.4.0(zod@4.6.5)
       '@tauri-apps/api':
         specifier: ^2
         version: 2.11.1

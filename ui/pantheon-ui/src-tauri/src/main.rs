@@ -4,7 +4,19 @@
 
 mod config;
 mod db;
+mod goose_server;
 mod pantheon;
+
+// goose serve sidecar — sync-команды (readiness через TCP/HTTP-пробу)
+#[tauri::command]
+fn start_goose_server(dir: Option<String>) -> Result<goose_server::ServeInfo, String> {
+    goose_server::start(dir)
+}
+
+#[tauri::command]
+fn stop_goose_server() -> Result<(), String> {
+    goose_server::stop()
+}
 
 use pantheon::{AgentChainToml, ChainStep};
 use serde::Serialize;
@@ -292,6 +304,8 @@ fn main() {
             set_goose_mode,
             list_sessions,
             list_recipes,
+            start_goose_server,
+            stop_goose_server,
         ])
         .run(tauri::generate_context!())
         .expect("error while running pantheon-ui");

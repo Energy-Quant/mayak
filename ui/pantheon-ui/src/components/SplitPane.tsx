@@ -33,7 +33,7 @@ export default function SplitPane(props: {
 
   return (
     <div className="split" ref={containerRef}>
-      <div className="pane" style={{ flex: `0 0 ${ratio * 100}%` }}>{left}</div>
+      <div className="pane" style={{ flex: right ? `0 0 ${ratio * 100}%` : 1 }}>{left}</div>
       {right && (
         <>
           <div className="divider" onMouseDown={startDrag} />
