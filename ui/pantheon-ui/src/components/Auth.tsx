@@ -1,34 +1,22 @@
-// Auth — вкладка Авторизация: провайдеры goose и место хранения ключей
-import { useEffect, useState } from "react";
-import { getConfigSummary } from "../api";
+// Auth — вкладка «Авторизация»: управление ключами появится позже.
+// Значения API-ключей UI принципиально не показывает — goose хранит их в системном брелоке.
+import { Icon } from "./Icon";
 
 export default function Auth() {
-  const [providers, setProviders] = useState<string[]>([]);
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    getConfigSummary().then((c) => setProviders(c.providers ?? [])).catch((e) => setErr(String(e).slice(0, 100)));
-  }, []);
-
   return (
-    <div className="page">
-      <h2>Авторизация</h2>
-      <div className="page-hint">API-ключи goose хранит в системном брелоке (Secret Service / keyring). С undermine отображаются только имена провайдеров — значения ключей UI не раскрывает (безопасность).</div>
-      {err && <div className="error-banner">⚠ {err}</div>}
-      <div className="table-wrap">
-        <table>
-          <thead><tr><th>Провайдер</th><th>Ключ</th></tr></thead>
-          <tbody>
-            {providers.map((p) => (
-              <tr key={p}>
-                <td>{p}</td>
-                <td className="dim">в keyring (secret-service, schema goose)</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="card">
+      <div className="empty">
+        <div style={{ marginBottom: 12 }}>
+          <Icon name="app" size={40} />
+        </div>
+        <div className="card-title">Авторизация</div>
+        <div className="dim" style={{ marginTop: 6 }}>
+          Управление ключами провайдеров — позже.
+        </div>
+        <div className="dim small" style={{ marginTop: 6 }}>
+          Ключи хранятся в системном брелоке, значения UI не раскрывает
+        </div>
       </div>
-      <div className="empty">Управление ключами — через оригинальный goose (CLI `goose configure`) или keyring утилиты.</div>
     </div>
   );
 }

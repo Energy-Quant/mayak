@@ -5,6 +5,7 @@
 mod config;
 mod db;
 mod goose_server;
+mod limits;
 mod pantheon;
 
 // goose serve sidecar — sync-команды (readiness через TCP/HTTP-пробу)
@@ -384,8 +385,13 @@ fn main() {
             get_scheduled_jobs,
             list_stored_apps,
             open_app,
-            open_app,
-            open_app,
+            config::list_prompt_files,
+            config::read_prompt_file,
+            config::save_prompt_file,
+            config::get_config_paths,
+            config::get_config_limits,
+            limits::get_opencode_usage,
+            config::open_config_dir,
             pantheon::get_pantheon_overview,
             start_goose_server,
             stop_goose_server,

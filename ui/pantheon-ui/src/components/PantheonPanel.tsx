@@ -66,7 +66,7 @@ const PP_STYLES = `
 .pp-table tr:hover td { background: color-mix(in srgb, var(--accent-violet) 6%, transparent); }
 .pp-dim { color: var(--text-dim); }
 .pp-small { font-size: 11px; }
-.pp-mono { font-family: ui-monospace, monospace; }
+.pp-mono { font-family: inherit; }
 .pp-kind { margin-bottom: 14px; }
 .pp-kind-badge { font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
   margin-bottom: 4px; }

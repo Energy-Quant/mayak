@@ -17,6 +17,7 @@ toml = "0.9"
 rusqlite = { version = "0.32", features = ["bundled"] }
 dirs = "5"
 tokio = { version = "1", features = ["full"] }
+ureq = { version = "2", features = ["json"] }
 
 [profile.release]
 lto = true

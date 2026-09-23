@@ -6,8 +6,15 @@ import { invoke } from "@tauri-apps/api/core";
 // Gate: вне Tauri (браузер/dev) invoke гарантированно не работает
 export const isTauri = (): boolean =>
   typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
-export const safeInvoke = <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> =>
-  isTauri() ? invoke<T>(cmd, args) : Promise.reject(new Error("не в Tauri"));
+export const safeInvoke = <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+  // строгая проверка: сам invoke внутри читает window.__TAURI_INTERNALS__.invoke и крашится с
+  // TypeError «reading 'invoke'», если IPC-инъекция умерла (например, после падения WebProcess)
+  const internals = (window as any).__TAURI_INTERNALS__;
+  if (!internals || typeof internals.invoke !== "function") {
+    return Promise.reject(new Error("Tauri IPC недоступен — перезапустите окно (инъекция потеряна)"));
+  }
+  return invoke<T>(cmd, args);
+};
 
 export interface ChatMessage {
   id: string;
@@ -16,11 +23,54 @@ export interface ChatMessage {
   toolName?: string;
   toolStatus?: "pending" | "in_progress" | "completed" | "failed";
   subagentSessionId?: string;
+  /** создан из agent_message_chunk — следующие чанки дописываем в него, а не плодим сообщения */
+  chunk?: boolean;
 }
 
 export interface TodoItem {
   content: string;
   status: "pending" | "in_progress" | "completed";
+}
+
+/** Чистим строку TODO от служебных символов: «1. », «- [x] », «✅», «— ВЫПОЛНЕНО», кавычки-хвосты */
+export function cleanTodoText(raw: string): string {
+  let t = raw.replace(/\\n/g, " ").replace(/[`*_]/g, "").trim();
+  t = t.replace(/^\s*\d+[.)]\s+/, "");                 // 1. → 
+  t = t.replace(/^\s*[-*•]\s+/, "");                   // - → 
+  t = t.replace(/^\[([ xX✓✔])\]\s*/, "");              // [x] → 
+  t = t.replace(/\s*(✅|☑|✔|—\s*ВЫПОЛНЕНО\s*—?)/gi, "");
+  t = t.replace(/\s*—\s*(выполнено|в процессе)\s*$/i, "");
+  return t.replace(/\s{2,}/g, " ").trim();
+}
+
+/**
+ * TODO приходит НЕ апдейтом plan/todos, а вызовом инструмента `todo write`
+ * с content=markdown-список (1. ... / - [x] ... / ✅ в конце строки).
+ * Распознаём оба формата — иначе правая панель с галочками пустая.
+ */
+export function parseTodos(content: unknown): TodoItem[] {
+  if (typeof content !== "string") return [];
+  const out: TodoItem[] = [];
+  const text = content.replace(/\\n/g, "\n");
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue; // заголовок списка — не пункт
+    const cb = trimmed.match(/^(?:[-*•]\s*)?\[([ xX✓✔~])\]\s*(.*)$/);
+    const num = trimmed.match(/^\d+[.)]\s+(.*)$/);
+    if (cb) {
+      const done = cb[1].toLowerCase() !== " " && cb[1] !== "~";
+      const progress = cb[1] === "~";
+      out.push({ content: cleanTodoText(cb[2]), status: progress ? "in_progress" : done ? "completed" : "pending" });
+    } else if (num) {
+      let status: TodoItem["status"] = "pending";
+      let t = num[1];
+      if (/(✅|☑|✔|\[x\])/i.test(t)) status = "completed";
+      else if (/(⏳|\[~\]|в процессе|in.progress)/i.test(t)) status = "in_progress";
+      const cleaned = cleanTodoText(t);
+      if (cleaned) out.push({ content: cleaned, status });
+    }
+  }
+  return out.filter((x) => x.content.length > 0);
 }
 
 export type AcpStatus = "idle" | "starting" | "ready" | "error";
@@ -45,9 +95,12 @@ export class AcpSession {
     this.handlers = h;
   }
 
+  /** id текущей ACP-сессии — родитель для иерархии субагентов */
+  get id(): string | null { return this.sessionId; }
+
   async start(workingDir?: string) {
     this.status = "starting";
-    const serve = await invoke<{ ws_url: string }>("start_goose_server", { dir: workingDir });
+    const serve = await safeInvoke<{ ws_url: string }>("start_goose_server", { dir: workingDir });
     const stream = createWebSocketStream(serve.ws_url, { protocols: [] } as never);
 
     const app = client({ name: "pantheon-ui" })
@@ -88,7 +141,7 @@ export class AcpSession {
   }
 
   stop() {
-    invoke("stop_goose_server").catch(() => {});
+    safeInvoke("stop_goose_server").catch(() => {});
     this.status = "idle";
     this.sessionId = null;
     this.connection = null;
@@ -109,30 +162,51 @@ export class AcpSession {
         break;
       case "tool_call": {
         const meta = (up._meta ?? {}) as { subagent_session_id?: string };
+        const toolName = String(up.title ?? up.kind ?? "tool");
+        const rawIn = up.rawInput;
+        // todo write → парсим контент в чек-лист правой панели (нативные галочки)
+        if (/todo/i.test(toolName) && rawIn && typeof rawIn === "object") {
+          const items = parseTodos((rawIn as { content?: unknown }).content ?? (rawIn as { text?: unknown }).text);
+          if (items.length) this.handlers.onTodo(items);
+        }
         this.handlers.onMessage({
           id: String(up.toolCallId ?? id), role: "tool",
-          text: typeof up.rawInput === "string" ? up.rawInput : JSON.stringify(up.rawInput ?? ""),
-          toolName: String(up.title ?? up.kind ?? "tool"),
+          text: typeof rawIn === "string" ? rawIn : JSON.stringify(rawIn ?? ""),
+          toolName,
           toolStatus: up.status as ChatMessage["toolStatus"],
           subagentSessionId: meta?.subagent_session_id,
         });
         break;
       }
       case "tool_call_update": {
+        const patch: Partial<ChatMessage> = { toolStatus: up.status as ChatMessage["toolStatus"] };
         let text: string | undefined;
         const body = up.rawOutput?.content?.[0];
-        if (typeof body === "object" && body) text = String(body.text ?? "");
+        if (typeof body === "object" && body && body.text !== undefined) text = String(body.text ?? "");
         else if (typeof up.rawOutput === "string") text = up.rawOutput;
-        this.handlers.onUpdateMessage(String(up.toolCallId ?? ""), { toolStatus: up.status as ChatMessage["toolStatus"], text });
+        // todo write возвращает обновлённый список в rawOutput — перепарсим (галочки ✅/—)
+        if (/todo/i.test(String((up as any).title ?? (up as any).kind ?? "")) && text) {
+          const items = parseTodos(text);
+          if (items.length) this.handlers.onTodo(items);
+        }
+        // текст даём только когда он реально есть: spread с text:undefined ЗАТИРАЛ
+        // уже отрендеренный текст → «undefined is not an object (m.text.slice)» и крах рендера
+        if (text !== undefined) patch.text = text;
+        this.handlers.onUpdateMessage(String(up.toolCallId ?? ""), patch);
         break;
       }
       default: {
         const entries = up.plan?.entries ?? up.todos ?? (up as any).todos;
         if (Array.isArray(entries)) {
-          this.handlers.onTodo(entries.map((e: Record<string, any>) => ({
-            content: String(e.text ?? e.content ?? e.task ?? ""),
-            status: e.status as TodoItem["status"],
-          })));
+          // plan-entries приезжают с «сырыми» строками («1. …», «# Заголовок», ✅) — чистим
+          this.handlers.onTodo(
+            entries
+              .map((e: Record<string, any>) => ({
+                content: cleanTodoText(String(e.text ?? e.content ?? e.task ?? "")),
+                status: (e.status as TodoItem["status"]) ?? "pending",
+              }))
+              .filter((x) => x.content.length > 0),
+          );
         }
       }
     }
@@ -140,10 +214,12 @@ export class AcpSession {
 }
 
 export interface SubagentRow { id: string; label: string; tokens: number; running: boolean }
-export const listSubagents = async (): Promise<SubagentRow[]> => {
-  const rows = await invoke<any[]>("list_sessions", { onlyRunning: false });
+/** Субагенты ИЕРАРХИЧЕСКИ: только дети parentId. Без parentId — пусто (иерархия, не плоский список). */
+export const listSubagents = async (parentId?: string | null): Promise<SubagentRow[]> => {
+  if (!parentId) return [];
+  const rows = await safeInvoke<any[]>("list_sessions", { onlyRunning: false });
   return rows
-    .filter((r: any) => r.session_type === "sub_agent")
+    .filter((r: any) => r.session_type === "sub_agent" && r.parent_session_id === parentId)
     .slice(0, 12)
     .map((r: any) => ({
       id: r.id, label: r.title || "Субагент", tokens: r.total_tokens ?? 0,

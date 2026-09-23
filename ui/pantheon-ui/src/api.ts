@@ -1,9 +1,13 @@
 // pantheon-ui: типы и bridge к Rust-бэкенду (Tauri invoke, с безопасным fallback вне Tauri)
 import { isTauri } from "./acp";
-const invoke = <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> =>
-  isTauri()
-    ? import("@tauri-apps/api/core").then((m) => m.invoke<T>(cmd, args))
-    : Promise.reject(new Error("не в Tauri"));
+/** Гейт + вызов: вне Tauri или при мёртвой инъекции — честный reject, не TypeError */
+const invoke = <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+  const internals = (window as any).__TAURI_INTERNALS__;
+  if (!isTauri() || typeof internals?.invoke !== "function") {
+    return Promise.reject(new Error(`Tauri IPC недоступен (${cmd})`));
+  }
+  return import("@tauri-apps/api/core").then((m) => m.invoke<T>(cmd, args));
+};
 
 export type Role = "goose" | "oracle" | "librarian";
 
@@ -105,6 +109,40 @@ export const setActiveModel = (provider: string, model: string): Promise<void> =
 export const setGooseMode = (mode: string): Promise<void> =>
   invoke("set_goose_mode", { mode });
 
+// ── Настройки: промпты, пути конфига, лимиты ──
+export interface PromptFileInfo {
+  name: string;
+  exists: boolean;
+}
+
+export interface ConfigPaths {
+  config_path: string;
+  config_dir: string;
+  prompts_dir: string;
+}
+
+export interface ConfigLimits {
+  goose_max_turns: number | null;
+  goose_auto_compact_threshold: number | null;
+}
+
+export const listPromptFiles = (): Promise<PromptFileInfo[]> =>
+  invoke("list_prompt_files");
+
+export const readPromptFile = (name: string): Promise<string> =>
+  invoke("read_prompt_file", { name });
+
+export const savePromptFile = (name: string, content: string): Promise<void> =>
+  invoke("save_prompt_file", { name, content });
+
+export const getConfigPaths = (): Promise<ConfigPaths> =>
+  invoke("get_config_paths");
+
+export const getConfigLimits = (): Promise<ConfigLimits> =>
+  invoke("get_config_limits");
+
+export const openConfigDir = (): Promise<void> => invoke("open_config_dir");
+
 export const listSessions = (onlyRunning = false): Promise<SessionRow[]> =>
   invoke("list_sessions", { onlyRunning });
 
@@ -140,3 +178,16 @@ export const PRESETS: Record<string, AgentChain[]> = {
 export const getScheduledJobs = () => invoke<any[]>("get_scheduled_jobs");
 export const getStoredApps = () => invoke<string[]>("list_stored_apps");
 export const openApp = (name: string) => invoke<void>("open_app", { name });
+
+/* ── Лимиты подписки OpenCode Go (5ч/нед/мес) — живые ── */
+export interface UsageWindow {
+  status: string;
+  percent: number;
+  resetsAt?: string | null;
+}
+export interface UsageReport {
+  rolling: UsageWindow;
+  weekly: UsageWindow;
+  monthly: UsageWindow;
+}
+export const getOpenCodeUsage = (): Promise<UsageReport> => invoke("get_opencode_usage");

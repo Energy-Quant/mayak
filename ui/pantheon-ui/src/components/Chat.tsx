@@ -1,11 +1,40 @@
-// Chat — ACP-чат + правая панель: TODO (динамически из session/update) + субагенты (sessions.db)
+// Chat — ACP-чат: автостарт goose serve + welcome-экран; субагенты — иерархия внутри сессии
 import { useEffect, useRef, useState } from "react";
 import { AcpSession, ChatMessage, TodoItem, SubagentRow, listSubagents } from "../acp";
-import { renderMarkdown } from "../markdown";
+import { renderMarkdown, renderUserText } from "../markdown";
 import PantheonRoleBadge from "./PantheonRoleBadge";
 import { Icon } from "./Icon";
+import { useDragWidth } from "../useDragWidth";
+import UsageBar from "./UsageBar";
 
-export function ChatPage() {
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return "Доброе утро";
+  if (h >= 12 && h < 18) return "Добрый день";
+  if (h >= 18 && h < 23) return "Добрый вечер";
+  return "Доброй ночи";
+}
+
+function Clock() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 15_000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="hero-clock">
+      <div className="hero-time">
+        {now.getHours().toString().padStart(2, "0")}:{now.getMinutes().toString().padStart(2, "0")}
+      </div>
+      <div className="hero-greeting">{greeting()}</div>
+    </div>
+  );
+}
+
+export function ChatPage(props: { railWidth: number; onRailWidth: (w: number) => void }) {
+  const startRailResize = useDragWidth(() => props.railWidth, props.onRailWidth, {
+    min: 210, max: 480, invert: true,
+  });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [todos, setTodos] = useState<TodoItem[] | null>(null);
@@ -15,27 +44,28 @@ export function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<AcpSession | null>(null);
+  const startedRef = useRef(false);
 
   // автоскролл
   useEffect(() => {
     scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight });
   }, [messages.length]);
 
-  // субагенты: только для активного разговора (после первого сообщения) — появляется динамически
-  const hasConversation = messages.length > 0;
-  useEffect(() => {
-    if (!hasConversation) { setSubagents([]); return; }
-    const load = () => listSubagents().then(setSubagents).catch(() => setSubagents([]));
-    load();
-    const t = setInterval(load, 10000);
-    return () => clearInterval(t);
-  }, [hasConversation]);
-
   const connect = async () => {
     setError("");
     setStatus("starting");
     const s = new AcpSession({
-      onMessage: (m) => setMessages((ms) => [...ms.slice(-400), m]),
+      onMessage: (m) =>
+        setMessages((ms) => {
+          const last = ms[ms.length - 1];
+          // Стрим: каждый agent_message_chunk — не новое сообщение, а продолжение
+          // предыдущего чанка-сообщения (пока не было tool/user — они разрывают цепочку)
+          if (m.role === "agent" && last?.role === "agent" && last.chunk) {
+            return [...ms.slice(0, -1), { ...last, text: last.text + m.text }];
+          }
+          const msg: ChatMessage = m.role === "agent" ? { ...m, chunk: true } : m;
+          return [...ms.slice(-400), msg];
+        }),
       onUpdateMessage: (id, patch) =>
         setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, ...patch } : m))),
       onTodo: (items) => setTodos(items.length ? items : null),
@@ -46,19 +76,38 @@ export function ChatPage() {
     try { await s.start(); } catch (e) { setError(String(e).slice(0, 120)); setStatus("error"); }
   };
 
+  // автоподключение: стартовый экран сразу готов к вводу, без ручной кнопки
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    connect();
+    return () => sessionRef.current?.stop();
+  }, []);
+
+  // иерархия: субагенты ТОЛЬКО текущей сессии (children), не глобальный список
+  useEffect(() => {
+    const parent = sessionRef.current?.id;
+    if (!parent) { setSubagents([]); return; }
+    const load = () => listSubagents(parent).then(setSubagents).catch(() => setSubagents([]));
+    load();
+    const t = setInterval(load, 10000);
+    return () => clearInterval(t);
+  }, [status === "ready", messages.length]);
+
   const send = async () => {
     const text = input.trim();
     if (!text || !sessionRef.current || status !== "ready") return;
     setInput("");
     setStreaming(true);
     try { await sessionRef.current.prompt(text); }
-    catch (e) { setError(String(e).slice(0, 120)); }
+    catch (e) { setError(`Ошибка промпта: ${String(e).slice(0, 200)}`); }
     finally { setStreaming(false); }
   };
 
   useEffect(() => () => sessionRef.current?.stop(), []);
 
   const running = subagents.filter((s) => s.running).length;
+  const hasConversation = messages.length > 0;
 
   return (
     <div className="chat-page">
@@ -71,22 +120,20 @@ export function ChatPage() {
           {hasConversation === false && (
             <div className="chat-center">
               <div className="chat-hero">
-                <div className="chat-placeholder-icon"><Icon name="goose" size={44} /></div>
-                {status === "idle" ? (
-                  <>
-                    <button className="primary" onClick={connect}>Подключить goose serve (ACP)</button>
-                    <div className="dim small">после подключения панель задач и субагентов появится справа</div>
-                  </>
-                ) : (
-                  <>
-                    <div>Готов. Начните разговор.</div>
-                    <div className="dim small">панель задач и субагентов появится справа</div>
-                  </>
+                <Clock />
+                {status === "error" && (
+                  <div className="error-banner">
+                    ⚠ {error}{" "}
+                    <button className="primary" onClick={connect}>повторить подключение</button>
+                  </div>
+                )}
+                {status !== "ready" && status !== "error" && (
+                  <div className="dim small">подключение к goose serve…</div>
                 )}
               </div>
             </div>
           )}
-          {error && <div className="error-banner">⚠ {error}</div>}
+          {error && hasConversation && <div className="error-banner">⚠ {error}</div>}
           <MessageList messages={messages} streaming={streaming} onSubagent={(id) => window.dispatchEvent(new CustomEvent("open-subagent", { detail: id }))} onCancel={() => sessionRef.current?.cancel()} />
         </div>
         <div className="chat-input-row">
@@ -102,19 +149,30 @@ export function ChatPage() {
           />
           <button className="primary" disabled={status !== "ready" || !input.trim()} onClick={send}>→</button>
         </div>
+        <UsageBar refreshKey={messages.length} />
       </div>
 
-      <aside className="chat-right" style={{ display: hasConversation ? undefined : "none" }}>
+      <aside
+        className="chat-right"
+        style={{ display: hasConversation ? undefined : "none", width: props.railWidth, minWidth: props.railWidth }}
+      >
+        <div className="resize-handle" onMouseDown={startRailResize} title="Потянуть — изменить ширину" />
         {todos && (
           <section className="rail-card">
             <h3><Icon name="clipboard" /> Задачи</h3>
             <ul className="todo-list">
-              {todos.map((t, i) => (
-                <li key={i} className={`todo-${t.status}`}>
-                  <span className="todo-box">{t.status === "completed" ? "✓" : ""}</span>
-                  {t.content}
-                </li>
-              ))}
+              {todos.map((t, i) => {
+                const [title, detail] = t.content.split(" — ");
+                return (
+                  <li key={i} className={`todo-${t.status}`}>
+                    <span className="todo-box">{t.status === "completed" ? "✓" : t.status === "in_progress" ? "·" : ""}</span>
+                    <span className="todo-text">
+                      {title}
+                      {detail && <span className="todo-detail">{detail}</span>}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         )}
@@ -157,10 +215,15 @@ function MessageList(props: { messages: ChatMessage[]; streaming: boolean; onSub
                   ↗ {m.subagentSessionId}
                 </button>
               )}
-              <div className="tool-body">{m.text.slice(0, 400)}</div>
+              <div className="tool-body">{(m.text ?? "").slice(0, 400)}</div>
             </div>
           ) : (
-            <div className="bubble md-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
+            <div
+              className={`bubble ${m.role === "user" ? "user-text" : "md-body"}`}
+              dangerouslySetInnerHTML={{
+                __html: m.role === "user" ? renderUserText(m.text ?? "") : renderMarkdown(m.text ?? ""),
+              }}
+            />
           )}
         </div>
       ))}

@@ -77,7 +77,7 @@ pub fn list_sessions(only_running: bool) -> Result<Vec<serde_json::Value>, Strin
     .map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, description, session_type, updated_at, total_tokens
+            "SELECT id, name, description, session_type, updated_at, total_tokens, parent_session_id
              FROM sessions WHERE archived_at IS NULL
              ORDER BY updated_at DESC LIMIT 100",
         )
@@ -96,6 +96,7 @@ pub fn list_sessions(only_running: bool) -> Result<Vec<serde_json::Value>, Strin
                     else { desc.chars().take(60).collect() }
                 } else { name },
                 "session_type": stype,
+                "parent_session_id": r.get::<_, Option<String>>(6)?,
                 "updated_at": r.get::<_, String>(4)?,
                 "total_tokens": r.get::<_, Option<i64>>(5)?.unwrap_or(0),
                 "running": is_running,

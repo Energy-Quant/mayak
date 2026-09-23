@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { AgentSettings } from "./AgentSettings";
 import { Toggle } from "./Extensions";
-import { ConfigSummary, getConfigSummary, setActiveModel, setGooseMode } from "../api";
+import {
+  ConfigLimits, ConfigPaths, ConfigSummary, PromptFileInfo,
+  getConfigLimits, getConfigPaths, getConfigSummary, listPromptFiles,
+  openConfigDir, readPromptFile, savePromptFile, setActiveModel, setGooseMode,
+} from "../api";
 import Keyboard from "./Keyboard";
 import Auth from "./Auth";
 // ConfigSummary используется в ChatTab
@@ -16,9 +20,9 @@ const TABS = [
 type Tab = (typeof TABS)[number][0];
 
 const THEMES = [
-  ["dreamwave-night", "Тёмная (DreamWave)"],
-  ["tokyonight-storm", "TokyoNight"],
-  ["rosepine-moon", "Rosé Pine"],
+  ["auto", "Авто · день 10–16 → светлая, иначе тёмная"],
+  ["light", "День — свет и волны"],
+  ["dark", "Закат — ветер и вода"],
 ];
 
 const MODES = [
@@ -27,6 +31,14 @@ const MODES = [
   ["chat", "Утверждать", "Минимально проверяет, какие действия требуют подтверждения, исходя из уровня риска"],
   ["chat_only", "Планировать", "Разговор с генерацией и представлением без выполнения или принятия решений"],
 ];
+
+/* тема по умолчанию: авто по часу — светлая 10:00–16:00, тёмная 16:00–10:00 */
+export function applyThemeMode(mode: string) {
+  const h = new Date().getHours();
+  const t = mode === "auto" ? (h >= 10 && h < 16 ? "light" : "dark") : mode;
+  document.documentElement.dataset.theme = t;
+  return t;
+}
 
 export function Settings() {
   const [tab, setTab] = useState<Tab>("models");
@@ -44,11 +56,11 @@ export function Settings() {
       {tab === "chat" && <ChatTab />}
       {tab === "appearance" && <AppearanceTab />}
       {tab === "pantheon" && <AgentSettings />}
-      {tab === "ui" && <Stub title="Пользовательский интерфейс" note="Локальные модели (HuggingFace) и Подключение к серверу" />}
-      {tab === "programs" && <Stub title="Программы" note="Редактирование промптов: system.md, compaction.md, subagent_system.md, apps_create.md, apps_iterate.md, permission_judge.md, tiny_model_system.md" />}
+      {tab === "ui" && <UiTab />}
+      {tab === "programs" && <ProgramsTab />}
       {tab === "keys" && <Keyboard />}
       {tab === "auth" && <Auth />}
-      {tab === "app" && <Stub title="Приложение" note="Конфигурация (config.yaml), параметры трея, тема, язык" />}
+      {tab === "app" && <AppTab />}
     </div>
   );
 }
@@ -127,15 +139,15 @@ function ChatTab() {
 }
 
 function AppearanceTab() {
-  const [theme, setTheme] = useState<string>(() => document.documentElement.dataset.theme ?? "dreamwave-night");
+  const [theme, setTheme] = useState<string>(() => localStorage.getItem("pantheon-theme") ?? "auto");
   const pick = (t: string) => {
-    document.documentElement.dataset.theme = t;
+    applyThemeMode(t);
     localStorage.setItem("pantheon-theme", t);
     setTheme(t);
   };
   useEffect(() => {
     const saved = localStorage.getItem("pantheon-theme");
-    if (saved) { document.documentElement.dataset.theme = saved; setTheme(saved); }
+    applyThemeMode(saved ?? "auto");
   }, []);
   return (
     <>
@@ -191,12 +203,278 @@ function SwitchCard(props: { title: string; desc: string; on: boolean }) {
   );
 }
 
-function Stub(props: { title: string; note: string }) {
+/* ── Пользовательский интерфейс ── */
+function UiTab() {
+  const [cfg, setCfg] = useState<ConfigSummary | null>(null);
+  const [theme] = useState(() => localStorage.getItem("pantheon-theme") ?? "auto");
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    getConfigSummary().then(setCfg).catch(() => setErr("Конфиг goose недоступен"));
+  }, []);
+
+  const applyMode = async (m: string) => {
+    try {
+      await setGooseMode(m);
+      setCfg(await getConfigSummary());
+      setErr("");
+    } catch (e) {
+      setErr(String(e).slice(0, 100));
+    }
+  };
+
+  const themeShort = theme === "auto" ? "Авто" : theme === "light" ? "Светлая" : "Тёмная";
+
+  return (
+    <>
+      <div className="card">
+        <div className="card-row">
+          <div>
+            <div className="card-title">Тема</div>
+            <div className="dim small">Авто — день 10–16 светлая, иначе тёмная</div>
+          </div>
+          <div className="dim">{themeShort}</div>
+        </div>
+        <div className="dim small">Переключение темы — на вкладке «Внешний вид»</div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">Режим Goose</div>
+        <div className="dim">Как агент взаимодействует с инструментами и расширениями (GOOSE_MODE)</div>
+        {MODES.map(([id, label, desc]) => (
+          <label key={id} className={`mode-row${cfg?.goose_mode === id ? " active" : ""}`}>
+            <div>
+              <div>{label}</div>
+              <div className="dim small">{desc}</div>
+            </div>
+            <input
+              type="radio"
+              name="goose-mode-ui"
+              checked={cfg?.goose_mode === id}
+              onChange={() => applyMode(id)}
+            />
+          </label>
+        ))}
+        {err && <div className="dim small">{err}</div>}
+      </div>
+
+      <div className="card">
+        <div className="card-title">Активная модель</div>
+        <div className="dim">Провайдер и модель из config.yaml</div>
+        <div className="card-row" style={{ marginTop: 10 }}>
+          <div>
+            <div>{cfg?.goose_model || "—"}</div>
+            <div className="dim small">{cfg?.goose_provider || cfg?.active_provider || "—"}</div>
+          </div>
+          <div className="dim small">изменение — вкладка «Модели»</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-row">
+          <div>
+            <div className="card-title">Локальные модели (HuggingFace)</div>
+            <div className="dim small">Запуск моделей на своём железе</div>
+          </div>
+          <div className="dim small">позже</div>
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-row">
+          <div>
+            <div className="card-title">Подключение к серверу</div>
+            <div className="dim small">Удалённый goose-сервер вместо локального</div>
+          </div>
+          <div className="dim small">позже</div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ── Программы: промпты goose ── */
+function ProgramsTab() {
+  const [files, setFiles] = useState<PromptFileInfo[]>([]);
+  const [sel, setSel] = useState("");
+  const [content, setContent] = useState("");
+  const [status, setStatus] = useState("");
+  const [dirty, setDirty] = useState(false);
+
+  const openFile = async (name: string, list?: PromptFileInfo[]) => {
+    try {
+      const text = await readPromptFile(name);
+      setSel(name);
+      setContent(text);
+      setDirty(false);
+      const exists = (list ?? files).find((f) => f.name === name)?.exists ?? true;
+      setStatus(exists ? "" : "Файл не создан — «Сохранить» создаст его");
+    } catch (e) {
+      setStatus(String(e).slice(0, 100));
+    }
+  };
+
+  const loadList = async (selectName?: string) => {
+    try {
+      const list = await listPromptFiles();
+      setFiles(list);
+      const name = selectName ?? list[0]?.name ?? "";
+      if (name) await openFile(name, list);
+    } catch (e) {
+      setStatus(String(e).slice(0, 100));
+    }
+  };
+
+  useEffect(() => { loadList(); }, []);
+
+  const save = async () => {
+    if (!sel) return;
+    try {
+      await savePromptFile(sel, content);
+      setDirty(false);
+      setStatus("Сохранено · резервная копия .bak");
+      await loadList(sel);
+    } catch (e) {
+      setStatus(String(e).slice(0, 100));
+    }
+  };
+
   return (
     <div className="card">
-      <div className="card-title">{props.title}</div>
-      <div className="dim">{props.note}</div>
-      <div className="dim small" style={{ marginTop: 8 }}>Раздел реализуется в следующей итерации паритета</div>
+      <div className="card-title">Промпты goose</div>
+      <div className="dim">
+        Текстовые промпты ~/.config/goose/prompts — при сохранении прежний вариант уходит в .bak
+      </div>
+      <div style={{ display: "flex", gap: 16, alignItems: "stretch", marginTop: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, width: 240, flexShrink: 0 }}>
+          {files.map((f) => (
+            <button
+              key={f.name}
+              className={sel === f.name ? "primary" : ""}
+              onClick={() => openFile(f.name)}
+            >
+              {f.name}
+              {!f.exists && <span className="dim small"> · нет</span>}
+            </button>
+          ))}
+          {!files.length && <div className="empty">Список недоступен</div>}
+        </div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+          <textarea
+            className="text-input"
+            value={content}
+            disabled={!sel}
+            onChange={(e) => { setContent(e.target.value); setDirty(true); }}
+            style={{ flex: 1, minHeight: 300, width: "100%", boxSizing: "border-box", resize: "vertical" }}
+          />
+          <div className="row-actions" style={{ margin: 0 }}>
+            <button className="primary" onClick={save} disabled={!sel || !dirty}>
+              Сохранить
+            </button>
+            {dirty && <span className="dim small">есть несохранённые изменения</span>}
+          </div>
+          {status && <div className="dim small">{status}</div>}
+        </div>
+      </div>
     </div>
+  );
+}
+
+/* ── Приложение ── */
+function AppTab() {
+  const [paths, setPaths] = useState<ConfigPaths | null>(null);
+  const [limits, setLimits] = useState<ConfigLimits | null>(null);
+  const [autoTheme, setAutoTheme] = useState(
+    () => (localStorage.getItem("pantheon-theme") ?? "auto") === "auto"
+  );
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    getConfigPaths().then(setPaths).catch(() => setMsg("Конфиг goose недоступен"));
+    getConfigLimits().then(setLimits).catch(() => {});
+  }, []);
+
+  const toggleAuto = (v: boolean) => {
+    if (v) {
+      applyThemeMode("auto");
+      localStorage.setItem("pantheon-theme", "auto");
+      setAutoTheme(true);
+    } else {
+      const cur = document.documentElement.dataset.theme === "light" ? "light" : "dark";
+      applyThemeMode(cur);
+      localStorage.setItem("pantheon-theme", cur);
+      setAutoTheme(false);
+    }
+    setMsg("");
+  };
+
+  const copyPath = async () => {
+    try {
+      await navigator.clipboard.writeText(paths?.config_path ?? "");
+      setMsg("Путь скопирован");
+    } catch {
+      setMsg("Не удалось скопировать — выделите путь вручную");
+    }
+  };
+
+  const openDir = async () => {
+    try {
+      await openConfigDir();
+      setMsg("Папка конфигурации открыта");
+    } catch (e) {
+      setMsg(`Не удалось открыть папку: ${String(e).slice(0, 80)}`);
+    }
+  };
+
+  return (
+    <>
+      <div className="card">
+        <div className="card-title">Конфигурация goose</div>
+        <div className="dim">config.yaml — провайдеры, модели, расширения</div>
+        <div className="row-actions">
+          <input
+            className="text-input"
+            readOnly
+            value={paths?.config_path ?? "…"}
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <button onClick={openDir}>Открыть папку</button>
+          <button onClick={copyPath}>Копировать путь</button>
+        </div>
+        {msg && <div className="dim small">{msg}</div>}
+        <div className="dim small">Промпты: {paths?.prompts_dir ?? "…"}</div>
+      </div>
+
+      <div className="card">
+        <div className="card-row">
+          <div>
+            <div className="card-title">Автотема</div>
+            <div className="dim small">
+              День 10–16 — светлая, иначе тёмная. Выбор хранится локально (pantheon-theme)
+            </div>
+          </div>
+          <Toggle checked={autoTheme} onChange={toggleAuto} />
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">Лимиты сессии</div>
+        <div className="dim">Значения из config.yaml</div>
+        <div className="card-row" style={{ marginTop: 10 }}>
+          <div>
+            <div>GOOSE_MAX_TURNS</div>
+            <div className="dim small">максимум ходов агента</div>
+          </div>
+          <div>{limits?.goose_max_turns ?? "—"}</div>
+        </div>
+        <div className="card-row" style={{ marginTop: 10 }}>
+          <div>
+            <div>GOOSE_AUTO_COMPACT_THRESHOLD</div>
+            <div className="dim small">порог автосжатия контекста</div>
+          </div>
+          <div>{limits?.goose_auto_compact_threshold ?? "—"}</div>
+        </div>
+        <div className="dim small">Изменение лимитов из UI — позже</div>
+      </div>
+    </>
   );
 }

@@ -378,7 +378,7 @@ export default function ChainEditor({ className }: ChainEditorProps) {
                 margin: 0,
                 fontSize: 15,
                 color: meta.color,
-                fontFamily: "ui-monospace, monospace",
+                fontFamily: "inherit",
               }}
             >
               {meta.icon} {selected}

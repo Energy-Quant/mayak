@@ -1,7 +1,6 @@
 // App — каркас паритета: титлбар + сайдбар + страницы
 import { useEffect, useState } from "react";
 import Sidebar, { Page } from "./components/Sidebar";
-import TitleBar from "./components/TitleBar";
 import SubagentStream from "./components/SubagentStream";
 import Scheduler from "./components/Scheduler";
 import AppsPage from "./components/AppsPage";
@@ -16,9 +15,17 @@ import ChainEditor from "./components/ChainEditor";
 export default function App() {
   const [page, setPage] = useState<Page>("chat");
   const [subagentSession, setSubagentSession] = useState<string | null>(null);
+  // динамический ресайз панелей (как в оригинальном Goose — тянем за границу)
+  const [sidebarW, setSidebarW] = useState<number>(() => +(localStorage.getItem("pantheon-sidebar-w") ?? 236));
+  const [railW, setRailW] = useState<number>(() => +(localStorage.getItem("pantheon-rail-w") ?? 264));
+  const setSidebar = (w: number) => { setSidebarW(w); localStorage.setItem("pantheon-sidebar-w", String(w)); };
+  const setRail = (w: number) => { setRailW(w); localStorage.setItem("pantheon-rail-w", String(w)); };
 
   useEffect(() => {
     (window as any).__pantheon_nav = (p: string) => setPage(p as Page);
+    // иерархия: drill-down субагента в правую панель из tool-call'ов и rail-списка
+    const onOpenSub = (e: Event) => setSubagentSession((e as CustomEvent).detail as string);
+    window.addEventListener("open-subagent", onOpenSub as EventListener);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setSubagentSession(null);
       if ((e.ctrlKey || e.metaKey) && ["1","2","3","4","5","6","7"].includes(e.key)) {
@@ -28,21 +35,29 @@ export default function App() {
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("open-subagent", onOpenSub as EventListener);
+      window.removeEventListener("keydown", onKey);
+    };
   }, []);
 
   // TODO(MVP): ACP goose serve sidecar + @aaif/goose-acp-client; tool-call _meta.subagent_session_id → setSubagentSession
 
   return (
     <div className="app-shell">
-      <TitleBar />
       <div className="app-body">
-      <Sidebar page={page} onNavigate={setPage} onOpenSession={() => setPage("chat")} />
+      <Sidebar
+        page={page}
+        onNavigate={setPage}
+        onOpenSession={() => setPage("chat")}
+        width={sidebarW}
+        onWidth={setSidebar}
+      />
       <SplitPane
         left={
           <div className="main-col">
             <main className="main-scroll chat-host">
-              {page === "chat" && <ChatPage />}
+              {page === "chat" && <ChatPage railWidth={railW} onRailWidth={setRail} />}
               {page === "extensions" && <Extensions />}
               {page === "history" && <History />}
               {page === "recipes" && <Recipes />}

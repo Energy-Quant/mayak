@@ -63,6 +63,13 @@ pub fn start(dir: Option<String>) -> Result<ServeInfo, String> {
     // токен URL-safe: [a-z0-9-] без кодирования
     let secret = format!("sk-pantheon-{:x}{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(), 0x517cc1b7);
 
+    // лог sidecar'а: диагностика падений промпта/ACP
+    let log_dir = home.join(".local/state/pantheon-ui");
+    let _ = std::fs::create_dir_all(&log_dir);
+    let stderr_log = std::fs::File::create(log_dir.join("goose-serve.log"))
+        .map(Stdio::from)
+        .unwrap_or_else(|_| Stdio::null());
+
     let child = Command::new(&goose_path)
         .args([
             "serve",
@@ -78,7 +85,7 @@ pub fn start(dir: Option<String>) -> Result<ServeInfo, String> {
         .env("NO_COLOR", "1")
         .current_dir(&working_dir)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(stderr_log)
         .spawn()
         .map_err(|e| format!("spawn goose serve: {e}"))?;
     let pid = child.id();
