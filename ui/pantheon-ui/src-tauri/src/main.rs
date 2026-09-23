@@ -35,7 +35,37 @@ pub struct CatalogModel {
     pub context_limit: Option<i64>,
 }
 
+/// Локальная истина context_limit: ~/.config/goose/opencode-go-models.json (AA-ревизия).
+/// API /v1/models не отдаёт context_limit — файл главнее API. При недоступности API
+/// каталог всё равно заполняется из этого файла.
+fn load_context_truth(home: &std::path::Path) -> std::collections::HashMap<String, i64> {
+    let mut out = std::collections::HashMap::new();
+    let path = home.join(".config/goose/opencode-go-models.json");
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return out;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return out;
+    };
+    if let Some(models) = v.get("models").and_then(|m| m.as_array()) {
+        for m in models {
+            let Some(name) = m.get("id").and_then(|x| x.as_str()) else {
+                continue;
+            };
+            let ctx = m
+                .get("context_limit")
+                .or_else(|| m.get("context"))
+                .and_then(|x| x.as_i64());
+            if let Some(c) = ctx {
+                out.insert(name.to_string(), c);
+            }
+        }
+    }
+    out
+}
+
 /// Провайдеры: из config.yaml goose; модели — живой каталог /models провайдера.
+/// context_limit мержится из ~/.config/goose/opencode-go-models.json (file is truth).
 #[tauri::command]
 async fn get_provider_catalog() -> Result<Catalog, String> {
     let home = dirs::home_dir().ok_or("no home")?;
@@ -62,6 +92,8 @@ async fn get_provider_catalog() -> Result<Catalog, String> {
     // живой каталог: провайдеры с base_url + ключом из keyring/env — через goose CLI
     // (goose сессии знают provider_inventory; для v1 опрашиваем opencode_go напрямую)
     let mut models_by_provider = HashMap::new();
+    // file is truth: context_limit из ~/.config/goose/opencode-go-models.json (API его не отдаёт)
+    let ctx_truth = load_context_truth(&home);
     let key = std::env::var("OPENCODE_API_KEY").ok().or_else(|| {
         std::process::Command::new("secret-tool")
             .args(["search", "--all", "service", "goose"])
@@ -78,6 +110,7 @@ async fn get_provider_catalog() -> Result<Catalog, String> {
                     .and_then(|j| j.get("OPENCODE_API_KEY")?.as_str().map(String::from))
             })
     });
+    let mut api_list: Vec<CatalogModel> = Vec::new();
     if let Some(key) = key {
         if let Ok(body) = tokio::task::spawn_blocking(move || {
             std::process::Command::new("curl")
@@ -93,7 +126,7 @@ async fn get_provider_catalog() -> Result<Catalog, String> {
         .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
         {
             if let Ok(j) = serde_json::from_str::<serde_json::Value>(&body) {
-                let list: Vec<CatalogModel> = j
+                api_list = j
                     .get("data")
                     .and_then(|d| d.as_array())
                     .map(|a| {
@@ -107,10 +140,29 @@ async fn get_provider_catalog() -> Result<Catalog, String> {
                             .collect()
                     })
                     .unwrap_or_default();
-                models_by_provider.insert("opencode_go".to_string(), list);
             }
         }
     }
+    // MERGE: context_limit из JSON перекрывает API (в API контекста нет/устарел);
+    // если API упал — каталог целиком из JSON.
+    if api_list.is_empty() {
+        let mut names: Vec<String> = ctx_truth.keys().cloned().collect();
+        names.sort();
+        api_list = names
+            .into_iter()
+            .map(|name| CatalogModel {
+                context_limit: ctx_truth.get(&name).copied(),
+                name,
+            })
+            .collect();
+    } else {
+        for m in &mut api_list {
+            if let Some(c) = ctx_truth.get(&m.name) {
+                m.context_limit = Some(*c);
+            }
+        }
+    }
+    models_by_provider.insert("opencode_go".to_string(), api_list);
     Ok(Catalog { providers, models_by_provider })
 }
 
