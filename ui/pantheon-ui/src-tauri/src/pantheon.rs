@@ -66,6 +66,129 @@ pub fn save_chain(role: &str, chain: &AgentChainToml) -> Result<(), String> {
     Ok(())
 }
 
+// ── Панель «Пантеон»: обзор pantheon.db ─────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PantheonRun {
+    pub session_id: String,
+    pub role: String,
+    pub status: String,
+    pub model: Option<String>,
+    pub started_at: String,
+    pub task_summary: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PantheonArtifact {
+    pub path: String,
+    pub kind: String,
+    pub topic: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RoleStat {
+    pub role: String,
+    pub runs: i64,
+    /// runs не содержит токен-колонок (schema.sql) — null; поле для совместимости контракта
+    pub tokens: Option<i64>,
+    pub models: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PantheonOverview {
+    pub runs: Vec<PantheonRun>,
+    pub artifacts: Vec<PantheonArtifact>,
+    pub role_stats: Vec<RoleStat>,
+}
+
+/// Один вызов = вся панель: последние 20 runs, последние 40 artifacts, агрегаты по ролям.
+#[tauri::command]
+pub fn get_pantheon_overview() -> Result<PantheonOverview, String> {
+    let conn = crate::db::open()?;
+
+    let mut runs = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT session_id, role, coalesce(status,''), model, coalesce(started_at,''), task_summary
+                 FROM runs ORDER BY started_at DESC LIMIT 20",
+            )
+            .map_err(|e| e.to_string())?;
+        let it = stmt
+            .query_map([], |r| {
+                Ok(PantheonRun {
+                    session_id: r.get(0)?,
+                    role: r.get(1)?,
+                    status: r.get(2)?,
+                    model: r.get(3)?,
+                    started_at: r.get(4)?,
+                    task_summary: r.get(5)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        for row in it.flatten() {
+            runs.push(row);
+        }
+    }
+
+    let mut artifacts = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT path, kind, topic, coalesce(created_at,'') FROM artifacts
+                 ORDER BY created_at DESC LIMIT 40",
+            )
+            .map_err(|e| e.to_string())?;
+        let it = stmt
+            .query_map([], |r| {
+                Ok(PantheonArtifact {
+                    path: r.get(0)?,
+                    kind: r.get(1)?,
+                    topic: r.get(2)?,
+                    created_at: r.get(3)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        for row in it.flatten() {
+            artifacts.push(row);
+        }
+    }
+
+    let mut role_stats = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT role, COUNT(*), GROUP_CONCAT(DISTINCT model)
+                 FROM runs GROUP BY role ORDER BY COUNT(*) DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let it = stmt
+            .query_map([], |r| {
+                let models_raw: Option<String> = r.get(2)?;
+                Ok(RoleStat {
+                    role: r.get(0)?,
+                    runs: r.get(1)?,
+                    tokens: None, // в runs нет usage-колонок (см. schema.sql)
+                    models: models_raw
+                        .map(|s| {
+                            s.split(',')
+                                .map(|m| m.trim().to_string())
+                                .filter(|m| !m.is_empty())
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        for row in it.flatten() {
+            role_stats.push(row);
+        }
+    }
+
+    Ok(PantheonOverview { runs, artifacts, role_stats })
+}
+
 fn chrono_now() -> String {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

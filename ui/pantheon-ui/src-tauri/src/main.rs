@@ -384,6 +384,9 @@ fn main() {
             get_scheduled_jobs,
             list_stored_apps,
             open_app,
+            open_app,
+            open_app,
+            pantheon::get_pantheon_overview,
             start_goose_server,
             stop_goose_server,
         ])

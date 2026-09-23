@@ -5,7 +5,7 @@ import { Icon, IconName } from "./Icon";
 
 export type Page =
   | "chat" | "recipes" | "extensions" | "scheduler"
-  | "history" | "apps" | "settings";
+  | "history" | "apps" | "settings" | "pantheon" | "chains";
 
 const NAV: { id: Page; label: string; icon: IconName }[] = [
   { id: "chat", label: "Новый чат", icon: "plus" },
@@ -15,6 +15,8 @@ const NAV: { id: Page; label: string; icon: IconName }[] = [
   { id: "extensions", label: "Расширения", icon: "puzzle" },
   { id: "scheduler", label: "Планировщик", icon: "clock" },
   { id: "history", label: "История сессий", icon: "history" },
+  { id: "pantheon", label: "Пантеон", icon: "goose" },
+  { id: "chains", label: "Цепочки агентов", icon: "clipboard" },
 ];
 
 export default function Sidebar(props: {

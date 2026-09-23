@@ -10,6 +10,8 @@ import { Extensions } from "./components/Extensions";
 import { Settings } from "./components/Settings";
 import { History, Recipes } from "./components/SimplePages";
 import { ChatPage } from "./components/Chat";
+import PantheonPanel from "./components/PantheonPanel";
+import ChainEditor from "./components/ChainEditor";
 
 export default function App() {
   const [page, setPage] = useState<Page>("chat");
@@ -47,6 +49,8 @@ export default function App() {
               {page === "settings" && <Settings />}
               {page === "apps" && <AppsPage />}
               {page === "scheduler" && <Scheduler />}
+              {page === "pantheon" && <PantheonPanel />}
+              {page === "chains" && <ChainEditor />}
             </main>
           </div>
         }
