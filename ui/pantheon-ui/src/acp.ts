@@ -33,12 +33,12 @@ export interface Attachment {
 
 export interface ChatMessage {
   id: string;
-  role: "user" | "agent" | "tool";
+  role: "user" | "agent" | "tool" | "thinking";
   text: string;
   toolName?: string;
   toolStatus?: "pending" | "in_progress" | "completed" | "failed";
   subagentSessionId?: string;
-  /** создан из agent_message_chunk — следующие чанки дописываем в него, а не плодим сообщения */
+  /** создан из agent_message_chunk / agent_thought_chunk — следующие чанки дописываем */
   chunk?: boolean;
   /** сырой JSON входа инструмента — сохраняется отдельно, чтобы tool_call_update не затирал */
   toolInput?: string;
@@ -263,6 +263,13 @@ export class AcpSession {
       case "agent_message_chunk": {
         const text = typeof up.content === "object" && up.content ? String(up.content.text ?? "") : String(up.content ?? "");
         this.handlers.onMessage({ id, role: "agent", text });
+        break;
+      }
+      case "agent_thought_chunk": {
+        const text = typeof up.content === "object" && up.content
+          ? String(up.content.thinking ?? up.content.text ?? "")
+          : String(up.content ?? "");
+        if (text) this.handlers.onMessage({ id, role: "thinking", text });
         break;
       }
       case "user_message_chunk":

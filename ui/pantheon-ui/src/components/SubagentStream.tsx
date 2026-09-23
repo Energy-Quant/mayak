@@ -1,5 +1,6 @@
 // SubagentStream — split-view live-вид субагента из sessions.db (опрос 2с).
-// Рендер: markdown для текста, структурированные tool-call, кнопка копирования на каждое сообщение.
+// Рендер: markdown, структурированные tool-call, полное раскрытие thinking/вывода,
+// кнопка копирования на каждое сообщение.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri, safeInvoke, errText } from "../acp";
 import { renderMarkdown } from "../markdown";
@@ -41,7 +42,30 @@ function fallbackCopy(text: string): void {
   document.body.removeChild(ta);
 }
 
-/** Одно сообщение субагента — мемоизировано */
+/** Свёрнутое тело → кнопка → полное раскрытие со скроллом */
+function ExpandableHtml(props: {
+  html: string;
+  className?: string;
+  collapsed?: number;
+  label?: string;
+}) {
+  const { html, className = "", collapsed = 200, label = "Раскрыть полностью" } = props;
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`xbody ${open ? "open" : ""} ${className}`}>
+      <div
+        className="xbody-inner"
+        style={open ? undefined : { maxHeight: collapsed }}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      <button type="button" className="xbody-toggle" onClick={() => setOpen((v) => !v)}>
+        {open ? "▲ Свернуть" : `▼ ${label}`}
+      </button>
+    </div>
+  );
+}
+
+/** Одно сообщение субагента */
 const SubMsg = function SubMsg(props: { m: Msg; index: number; isFirstUser: boolean }) {
   const { m, isFirstUser } = props;
   const [copied, setCopied] = useState(false);
@@ -74,11 +98,12 @@ const SubMsg = function SubMsg(props: { m: Msg; index: number; isFirstUser: bool
       <div className="subagent-body">
         {blocks.map((b, j) => {
           if (b.kind === "thinking") {
+            const html = renderMarkdown(b.text);
             return (
-              <details key={j} className="subagent-thinking">
-                <summary>💭 рассуждения</summary>
-                <div>{b.text}</div>
-              </details>
+              <div key={j} className="subagent-thinking">
+                <div className="think-label">💭 Рассуждения</div>
+                <ExpandableHtml html={html} collapsed={72} label="Показать цепочку мышления" />
+              </div>
             );
           }
           if (b.kind === "tool" || b.kind === "tool_out") {
@@ -93,12 +118,14 @@ const SubMsg = function SubMsg(props: { m: Msg; index: number; isFirstUser: bool
           if (b.kind === "image") {
             return <div key={j} className="subagent-tool">🖼 {b.text}</div>;
           }
-          // текст — markdown
+          // текст (вывод) — markdown + раскрытие
           return (
-            <div
+            <ExpandableHtml
               key={j}
+              html={renderMarkdown(b.text)}
               className="subagent-text md-body"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(b.text) }}
+              collapsed={220}
+              label="Показать полностью"
             />
           );
         })}

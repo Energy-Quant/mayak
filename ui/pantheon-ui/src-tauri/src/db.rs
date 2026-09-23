@@ -146,7 +146,7 @@ fn content_blocks(raw: &str) -> Vec<serde_json::Value> {
                 if cleaned.is_empty() {
                     continue;
                 }
-                out.push(serde_json::json!({ "kind": "text", "text": clip(&cleaned, 800) }));
+                out.push(serde_json::json!({ "kind": "text", "text": clip(&cleaned, 12_000) }));
             }
             Some("thinking") => {
                 let Some(t) = obj.get("thinking").and_then(|t| t.as_str()) else { continue };
@@ -154,8 +154,8 @@ fn content_blocks(raw: &str) -> Vec<serde_json::Value> {
                 if t.is_empty() || is_noise(t) {
                     continue;
                 }
-                // мысли — коротко и приглушённо, не поток сознания на 400 слов
-                out.push(serde_json::json!({ "kind": "thinking", "text": clip(t, 160) }));
+                // thinking: полная цепочка для раскрытия в UI (клип только как страховка)
+                out.push(serde_json::json!({ "kind": "thinking", "text": clip(t, 8_000) }));
             }
             Some("toolRequest") | Some("tool_use") => {
                 // goose: toolRequest.toolCall.value.name (вложенная структура)

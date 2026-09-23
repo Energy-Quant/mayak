@@ -82,12 +82,13 @@ export function ChatPage(props: { railWidth: number; onRailWidth: (w: number) =>
       onMessage: (m) =>
         setMessages((ms) => {
           const last = ms[ms.length - 1];
-          // Стрим: каждый agent_message_chunk — не новое сообщение, а продолжение
-          // предыдущего чанка-сообщения (пока не было tool/user — они разрывают цепочку)
-          if (m.role === "agent" && last?.role === "agent" && last.chunk) {
+          // Стрим: каждый chunk — не новое сообщение, а продолжение предыдущего
+          // (пока не было tool/user — они разрывают цепочку)
+          if ((m.role === "agent" || m.role === "thinking") && last?.role === m.role && last.chunk) {
             return [...ms.slice(0, -1), { ...last, text: last.text + m.text }];
           }
-          const msg: ChatMessage = m.role === "agent" ? { ...m, chunk: true } : m;
+          const msg: ChatMessage =
+            m.role === "agent" || m.role === "thinking" ? { ...m, chunk: true } : m;
           return [...ms.slice(-400), msg];
         }),
       onUpdateMessage: (id, patch) =>
@@ -640,6 +641,45 @@ function statusLabel(s: string) {
   return { idle: "не подключено", starting: "подключение…", ready: "готов · glm-5.3-flash", error: "ошибка" }[s] ?? s;
 }
 
+/** Свёрнутое/раскрытое тело: по умолчанию клип, кнопка — полная высота со скроллом */
+function ExpandableBody(props: {
+  html: string;
+  className?: string;
+  collapsed?: number;
+  label?: string;
+}) {
+  const { html, className = "", collapsed = 110, label = "Раскрыть полностью" } = props;
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`xbody ${open ? "open" : ""} ${className}`}>
+      <div
+        className="xbody-inner"
+        style={open ? undefined : { maxHeight: collapsed }}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      <button
+        type="button"
+        className="xbody-toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        {open ? "▲ Свернуть" : `▼ ${label}`}
+      </button>
+    </div>
+  );
+}
+
+/** Thinking в основном чате: свёрнуто, кнопка → полный текст со скроллом */
+function ThinkingBlock(props: { text: string }) {
+  const html = useMemo(() => renderMarkdown(props.text), [props.text]);
+  return (
+    <div className="msg msg-thinking">
+      <div className="think-label">💭 Рассуждения</div>
+      <ExpandableBody html={html} className="think-body" collapsed={64} label="Показать цепочку мышления" />
+    </div>
+  );
+}
+
 /** Отдельное сообщение — мемоизировано, markdown кэшируется по text */
 const MessageItem = React.memo(function MessageItem(props: {
   m: ChatMessage;
@@ -651,6 +691,7 @@ const MessageItem = React.memo(function MessageItem(props: {
   // кэш markdown/html — пересчитываем ТОЛЬКО при смене text/role
   const html = useMemo(() => {
     if (m.role === "tool") return renderToolBody(m.toolName ?? "", m.toolInput ?? m.text ?? "");
+    if (m.role === "thinking") return renderMarkdown(m.text ?? "");
     return m.role === "user" ? renderUserText(m.text ?? "") : renderMarkdown(m.text ?? "");
   }, [m.text, m.role, m.toolName, m.toolInput]);
 
@@ -660,6 +701,10 @@ const MessageItem = React.memo(function MessageItem(props: {
     setCopied(true);
     setTimeout(() => setCopied(false), 1200);
   }, [m.text, m.toolInput, m.role]);
+
+  if (m.role === "thinking") {
+    return <ThinkingBlock text={m.text ?? ""} />;
+  }
 
   if (m.role === "tool") {
     return (
@@ -673,7 +718,7 @@ const MessageItem = React.memo(function MessageItem(props: {
             </button>
           )}
           <button className="msg-copy" onClick={copy} title="Копировать">{copied ? "✓" : "⧉"}</button>
-          <div className="tool-body" dangerouslySetInnerHTML={{ __html: html }} />
+          <ExpandableBody html={html} className="tool-body" collapsed={96} label="Раскрыть вызов" />
         </div>
       </div>
     );
