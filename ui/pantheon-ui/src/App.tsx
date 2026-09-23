@@ -26,6 +26,15 @@ export default function App() {
     // иерархия: drill-down субагента в правую панель из tool-call'ов и rail-списка
     const onOpenSub = (e: Event) => setSubagentSession((e as CustomEvent).detail as string);
     window.addEventListener("open-subagent", onOpenSub as EventListener);
+    // История → чат: открыть выбранную сессию и переключить страницу.
+    // ВАЖНО: НЕ переиспускаем "open-session" (петля на самовлове) — целевой
+    // слушатель в ChatPage слушает другое имя: "load-session".
+    const onOpenSession = (e: Event) => {
+      setPage("chat");
+      (window as any).__pantheon_pending_session = (e as CustomEvent).detail as string;
+      setTimeout(() => window.dispatchEvent(new CustomEvent("load-session", { detail: (e as CustomEvent).detail })), 60);
+    };
+    window.addEventListener("open-session", onOpenSession as EventListener);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setSubagentSession(null);
       if ((e.ctrlKey || e.metaKey) && ["1","2","3","4","5","6","7"].includes(e.key)) {
@@ -37,6 +46,8 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("open-subagent", onOpenSub as EventListener);
+    window.removeEventListener("open-session", onOpenSession as EventListener);
+    delete (window as any).__pantheon_pending_session;
       window.removeEventListener("keydown", onKey);
     };
   }, []);
@@ -49,7 +60,11 @@ export default function App() {
       <Sidebar
         page={page}
         onNavigate={setPage}
-        onOpenSession={() => setPage("chat")}
+        onOpenSession={(id: string) => {
+          setPage("chat");
+          (window as any).__pantheon_pending_session = id;
+          setTimeout(() => window.dispatchEvent(new CustomEvent("load-session", { detail: id })), 60);
+        }}
         width={sidebarW}
         onWidth={setSidebar}
       />
@@ -73,8 +88,15 @@ export default function App() {
           subagentSession ? (
             <div className="subagent-view">
               <div className="subagent-view-head">
-                <span className="chat-dot on" /> Субагент · session {subagentSession}
-                <small className="dim"> (live-стрим придёт с ACP-событиями этой сессии)</small>
+                <button
+                  className="subagent-close"
+                  onClick={() => setSubagentSession(null)}
+                  title="Закрыть (Esc)"
+                  aria-label="Закрыть панель субагента"
+                >✕</button>
+                <span className="chat-dot on" />
+                <span className="subagent-view-title">Субагент · session {subagentSession}</span>
+                <small className="dim"> live-стрим из sessions.db</small>
               </div>
               <SubagentStream sessionId={subagentSession} />
             </div>

@@ -296,6 +296,48 @@ fn list_subagent_messages(session_id: String) -> Result<Vec<serde_json::Value>, 
     db::list_subagent_messages(&session_id)
 }
 
+/// Вложение без OS-пути (paste/file input) → временный файл, путь уходит в промпт
+#[tauri::command]
+fn stage_attachment(name: String, data: Vec<u8>) -> Result<String, String> {
+    db::stage_attachment(&name, &data)
+}
+
+/// Ctrl+V fallback: WebKitGTK не отдаёт image через ClipboardEvent — читаем нативно через wl-clipboard
+#[tauri::command]
+fn clipboard_image() -> Result<Option<serde_json::Value>, String> {
+    use std::process::Command;
+    // если wl-clipboard нет — просто нет картинки
+    let Ok(types) = Command::new("wl-paste").arg("--list-types").output() else {
+        return Ok(None);
+    };
+    let text = String::from_utf8_lossy(&types.stdout);
+    let mime = ["image/png", "image/jpeg", "image/webp"]
+        .iter()
+        .find(|m| text.lines().any(|l| l.trim() == **m))
+        .copied();
+    let Some(mime) = mime else { return Ok(None) };
+    let out = Command::new("wl-paste").arg("-t").arg(mime).output().map_err(|e| e.to_string())?;
+    if !out.status.success() || out.stdout.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(serde_json::json!({ "mime": mime, "data": out.stdout })))
+}
+
+/// Чтение файла для нативного Tauri drop (картинка → bytes → превью + ACP image)
+#[tauri::command]
+fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
+    let p = std::path::Path::new(&path);
+    if !p.is_file() {
+        return Err(format!("не найден: {path}"));
+    }
+    // защита от гигантских файлов (~25 МБ)
+    let meta = std::fs::metadata(p).map_err(|e| e.to_string())?;
+    if meta.len() > 25 * 1024 * 1024 {
+        return Err("файл больше 25 МБ".into());
+    }
+    std::fs::read(p).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn list_recipes() -> Result<Vec<serde_json::Value>, String> {
     let dir = dirs::home_dir()
@@ -385,6 +427,9 @@ fn main() {
             list_sessions,
             list_recipes,
             list_subagent_messages,
+            stage_attachment,
+            read_file_bytes,
+            clipboard_image,
             get_scheduled_jobs,
             list_stored_apps,
             open_app,

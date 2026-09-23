@@ -112,11 +112,25 @@ export function History() {
           </thead>
           <tbody>
             {filtered.map((s) => (
-              <tr key={s.id}>
+              <tr
+                key={s.id}
+                className={s.session_type === "sub_agent" ? "" : "session-row"}
+                onClick={() => {
+                  if (s.session_type !== "sub_agent") {
+                    window.dispatchEvent(new CustomEvent("open-session", { detail: s.id }));
+                  }
+                }}
+              >
                 <td className="dim small" title={s.id}>
                   {s.id.length > 12 ? s.id.slice(0, 12) + "…" : s.id}
                 </td>
-                <td>{s.title || "Без названия"}</td>
+                <td
+                  className="session-open"
+                  title={s.title || "Открыть в чате"}
+                >
+                  {s.title || "Без названия"}
+                  {s.session_type !== "sub_agent" && <span className="session-open-hint">открыть ↗</span>}
+                </td>
                 <td className="dim">{s.session_type || "—"}</td>
                 <td className="dim">{(s.total_tokens ?? 0).toLocaleString("ru")}</td>
                 <td>
