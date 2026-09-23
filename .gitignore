@@ -3,3 +3,4 @@ dist/
 target/
 *.pkg.tar.zst
 *.AppImage
+packaging/pkg/
