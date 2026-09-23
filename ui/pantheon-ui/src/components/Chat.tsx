@@ -1,6 +1,6 @@
 // Chat — ACP-чат: автостарт goose serve + welcome-экран; субагенты — иерархия внутри сессии
 import { useEffect, useRef, useState } from "react";
-import { AcpSession, ChatMessage, TodoItem, SubagentRow, listSubagents } from "../acp";
+import { AcpSession, ChatMessage, TodoItem, SubagentRow, listSubagents, errText } from "../acp";
 import { renderMarkdown, renderUserText } from "../markdown";
 import PantheonRoleBadge from "./PantheonRoleBadge";
 import { Icon } from "./Icon";
@@ -52,6 +52,8 @@ export function ChatPage(props: { railWidth: number; onRailWidth: (w: number) =>
   }, [messages.length]);
 
   const connect = async () => {
+    // retry: сначала убить прошлый sidecar/сессию, иначе зомби goose serve
+    sessionRef.current?.stop();
     setError("");
     setStatus("starting");
     const s = new AcpSession({
@@ -73,7 +75,7 @@ export function ChatPage(props: { railWidth: number; onRailWidth: (w: number) =>
       onError: (e) => { setError(e); setStatus("error"); },
     });
     sessionRef.current = s;
-    try { await s.start(); } catch (e) { setError(String(e).slice(0, 120)); setStatus("error"); }
+    try { await s.start(); } catch (e) { setError(errText(e).slice(0, 200)); setStatus("error"); }
   };
 
   // автоподключение: стартовый экран сразу готов к вводу, без ручной кнопки
@@ -100,7 +102,7 @@ export function ChatPage(props: { railWidth: number; onRailWidth: (w: number) =>
     setInput("");
     setStreaming(true);
     try { await sessionRef.current.prompt(text); }
-    catch (e) { setError(`Ошибка промпта: ${String(e).slice(0, 200)}`); }
+    catch (e) { setError(`Ошибка промпта: ${errText(e).slice(0, 200)}`); }
     finally { setStreaming(false); }
   };
 

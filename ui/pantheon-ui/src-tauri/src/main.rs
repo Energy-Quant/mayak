@@ -10,8 +10,11 @@ mod pantheon;
 
 // goose serve sidecar — sync-команды (readiness через TCP/HTTP-пробу)
 #[tauri::command]
-fn start_goose_server(dir: Option<String>) -> Result<goose_server::ServeInfo, String> {
-    goose_server::start(dir)
+fn start_goose_server(
+    dir: Option<String>,
+    origins: Option<Vec<String>>,
+) -> Result<goose_server::ServeInfo, String> {
+    goose_server::start(dir, origins)
 }
 
 #[tauri::command]

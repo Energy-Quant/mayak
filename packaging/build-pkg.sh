@@ -3,7 +3,7 @@
 set -euo pipefail
 UI=~/pantheon/ui/pantheon-ui/src-tauri
 PKG=~/pantheon/packaging
-cd "$UI" && cargo build --release --features custom-protocol --features custom-protocol --features custom-protocol --features custom-protocol
+cd "$UI" && cargo build --release --features custom-protocol
 cp target/release/pantheon-ui "$PKG/pantheon-ui"
 cp icons/icon.png "$PKG/icon.png"
 cd "$PKG" && makepkg -f

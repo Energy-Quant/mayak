@@ -2,7 +2,7 @@
 # Пантеон UI — Tauri клиент Пантеона (krab-пакет pantheon-ui)
 pkgname=pantheon-ui-bin
 pkgver=0.1.0
-pkgrel=3
+pkgrel=4
 pkgdesc="Пантеон — мультиагентный клиент goose (Tauri 2)"
 arch=('x86_64')
 url="https://local/pantheon"

@@ -75,6 +75,28 @@ export function parseTodos(content: unknown): TodoItem[] {
 
 export type AcpStatus = "idle" | "starting" | "ready" | "error";
 
+/**
+ * Ошибки WebSocket в браузере приезжают Event'ом → String(e) = «[object Event]».
+ * Разбираем в читаемый текст (type/code/message/error).
+ */
+export function errText(e: unknown): string {
+  if (e instanceof Error) return e.message || e.name;
+  if (e && typeof e === "object") {
+    const any = e as Record<string, unknown>;
+    const bits: string[] = [];
+    if (typeof any.message === "string" && any.message) bits.push(any.message);
+    else if (typeof any.reason === "string" && any.reason) bits.push(any.reason);
+    if (typeof any.type === "string" && any.type) bits.push(`event=${any.type}`);
+    if (typeof any.code === "number") bits.push(`code=${any.code}`);
+    if (typeof any.error === "string" && any.error) bits.push(any.error);
+    if (bits.length) return bits.join(" · ");
+    const tag = (e as { constructor?: { name?: string } })?.constructor?.name;
+    if (tag && tag !== "Object") return tag;
+  }
+  const s = String(e);
+  return s === "[object Event]" ? "WebSocket: соединение отклонено" : s;
+}
+
 type Handlers = {
   onMessage: (m: ChatMessage) => void;
   onUpdateMessage: (id: string, patch: Partial<ChatMessage>) => void;
@@ -100,7 +122,23 @@ export class AcpSession {
 
   async start(workingDir?: string) {
     this.status = "starting";
-    const serve = await safeInvoke<{ ws_url: string }>("start_goose_server", { dir: workingDir });
+    // window.location.origin: dev = http://localhost:1420 (с портом!),
+    // release = tauri://localhost — goose сравнивает exact, порт обязателен
+    const origins = Array.from(
+      new Set(
+        [
+          typeof location !== "undefined" ? location.origin : "",
+          "tauri://localhost",
+          "http://tauri.localhost",
+          "https://tauri.localhost",
+          "null",
+        ].filter(Boolean),
+      ),
+    );
+    const serve = await safeInvoke<{ ws_url: string }>("start_goose_server", {
+      dir: workingDir,
+      origins,
+    });
     const stream = createWebSocketStream(serve.ws_url, { protocols: [] } as never);
 
     const app = client({ name: "pantheon-ui" })
