@@ -43,7 +43,7 @@ function ok(cond: boolean, name: string, extra?: unknown): void {
   }
 }
 
-function hasKeys(obj: Record<string, unknown>, keys: string[]): boolean {
+function hasKeys(obj: object, keys: string[]): boolean {
   return keys.every((k) => k in obj);
 }
 

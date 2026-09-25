@@ -84,6 +84,7 @@ export async function start(dir?: string, origins?: string[]): Promise<ServeInfo
   const home = homedir();
   const goosePath = gooseBinary();
   const workingDir = dir ?? home;
+  if (!existsSync(workingDir)) mkdirSync(workingDir, { recursive: true }); // spawn падает с ENOENT на несуществующем cwd
   const port = await freePort();
   secret = `sk-mayak-${Date.now().toString(16)}517cc1b7`;
 
