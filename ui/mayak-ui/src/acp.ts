@@ -353,7 +353,7 @@ export interface SubagentRow {
   running: boolean;
 }
 /** Субагенты ИЕРАРХИЧЕСКИ: только дети parentId. Без parentId — пусто (иерархия, не плоский список). */
-export const listSubagents = async (parentId?: string | null): Promise<SubagentRow[]> => {
+export const listSubagents = (parentId?: string | null): SubagentRow[] => {
   if (!parentId) return [];
   const rows = listSessions(false);
   return rows

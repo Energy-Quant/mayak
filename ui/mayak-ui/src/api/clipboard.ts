@@ -4,6 +4,17 @@
  * wl-paste — primary для image на Wayland; GPUIX clipboard API = fallback (шаг 8).
  */
 
+/** Копирование текста в системный буфер (Wayland wl-copy); тихо при отсутствии */
+export function copyText(text: string): void {
+  try {
+    const p = Bun.spawn(["wl-copy"], { stdin: "pipe", stdout: "ignore", stderr: "ignore" });
+    p.stdin.write(text);
+    p.stdin.end();
+  } catch {
+    /* нет wl-clipboard — молчим (паритет fallbackCopy без DOM) */
+  }
+}
+
 export function clipboardImage(): { mime: string; data: number[] } | null {
   const types = Bun.spawnSync(["wl-paste", "--list-types"]);
   if (types.exitCode !== 0) return null; // нет wl-clipboard — просто нет картинки
