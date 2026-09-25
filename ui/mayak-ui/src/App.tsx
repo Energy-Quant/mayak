@@ -30,6 +30,10 @@ export default function App() {
   const [page, setPage] = useState<Page>("chat");
   const [subagentSession, setSubagentSession] = useState<string | null>(null);
   const [pendingSession, setPendingSession] = useState<string | null>(null);
+  /** id реально открытой сессии — подсветка строки в сайдбаре */
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  /** инкремент = команда «Новый чат» для ChatPage */
+  const [newChatToken, setNewChatToken] = useState(0);
   const [sidebarW, setSidebarW] = useState<number>(
     () => +(globalThis.localStorage?.getItem("mayak-sidebar-w") ?? 236),
   );
@@ -67,8 +71,18 @@ export default function App() {
 
   const openSession = useCallback((id: string) => {
     setPage("chat");
+    setActiveSessionId(id);
     setPendingSession(id);
   }, []);
+
+  /** Настоящий новый чат: сброс + чистая session/new (не навигация!) */
+  const onNewChat = useCallback(() => {
+    setPage("chat");
+    setActiveSessionId(null);
+    setNewChatToken((t) => t + 1);
+  }, []);
+
+  const onSessionChange = useCallback((id: string) => setActiveSessionId(id), []);
 
   let content: ReactNode;
   switch (page) {
@@ -76,6 +90,8 @@ export default function App() {
       content = (
         <ChatPage
           widthPx={Math.max(0, win.width - sidebarW)}
+          newChatToken={newChatToken}
+          onSessionChange={onSessionChange}
           railWidth={railW}
           onRailWidth={setRail}
           t={t}
@@ -122,6 +138,8 @@ export default function App() {
         page={page}
         onNavigate={setPage}
         onOpenSession={openSession}
+        onNewChat={onNewChat}
+        activeSessionId={activeSessionId}
         width={sidebarW}
         onWidth={setSidebar}
         t={t}

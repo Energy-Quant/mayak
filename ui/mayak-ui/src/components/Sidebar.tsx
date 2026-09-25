@@ -19,7 +19,6 @@ export type Page =
   | "chains";
 
 const NAV: { id: Page; label: string; icon: IconName }[] = [
-  { id: "chat", label: "Новый чат", icon: "plus" },
   { id: "recipes", label: "Рецепты", icon: "clipboard" },
   { id: "settings", label: "Настройки", icon: "settings" },
   { id: "apps", label: "Приложения", icon: "app" },
@@ -33,6 +32,10 @@ export default function Sidebar(props: {
   page: Page;
   onNavigate: (p: Page) => void;
   onOpenSession: (id: string) => void;
+  /** настоящее действие «Новый чат» (сброс+новая сессия), не навигация */
+  onNewChat: () => void;
+  /** подсветка открытой строки чата */
+  activeSessionId: string | null;
   width: number;
   onWidth: (w: number) => void;
   t: WaveTheme;
@@ -64,12 +67,17 @@ export default function Sidebar(props: {
     return () => clearInterval(iv);
   }, []);
 
-  const navItem = (n: { id: Page; label: string; icon: IconName }, bottom = false) => {
-    const active = props.page === n.id;
+  const navItem = (
+    n: { id: Page; label: string; icon: IconName },
+    bottom = false,
+    isActive?: boolean,
+    onClick?: () => void,
+  ) => {
+    const active = isActive ?? props.page === n.id;
     return (
       <div
         key={`${n.id}${bottom ? "-bottom" : ""}`}
-        onClick={() => props.onNavigate(n.id)}
+        onClick={onClick ?? (() => props.onNavigate(n.id))}
         style={{display: "flex", 
           flexDirection: "row",
           alignItems: "center",
@@ -113,7 +121,15 @@ export default function Sidebar(props: {
       <div style={{ paddingLeft: 10, paddingRight: 10, paddingBottom: sp[3] }}>
         <text style={{ fontSize: 20, color: t.magenta }}>🪿</text>
       </div>
-      <div style={{display: "flex",  flexDirection: "column" }}>{NAV.map((n) => navItem(n))}</div>
+      <div style={{display: "flex",  flexDirection: "column" }}>
+        {navItem(
+          { id: "chat", label: "Новый чат", icon: "plus" },
+          false,
+          props.page === "chat" && props.activeSessionId === null,
+          props.onNewChat,
+        )}
+        {NAV.map((n) => navItem(n))}
+      </div>
 
       <text
         style={{
@@ -144,7 +160,12 @@ export default function Sidebar(props: {
               paddingRight: 12,
               borderRadius: 9,
               cursor: "pointer",
-              backgroundColor: hoverIdx === i ? t.glass : "transparent",
+              backgroundColor:
+                s.id === props.activeSessionId
+                  ? t.navActive
+                  : hoverIdx === i
+                    ? t.glass
+                    : "transparent",
             }}
             onMouseEnter={() => setHoverIdx(i)}
             onMouseLeave={() => setHoverIdx(-1)}

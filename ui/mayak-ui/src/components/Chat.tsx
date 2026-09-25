@@ -28,7 +28,7 @@ import {
   toDataUrl,
 } from "../api/attachments";
 import { winKeys } from "../windowKeys";
-import { chatSession } from "../chatSession";
+import { chatSession, setLastSid } from "../chatSession";
 import PantheonRoleBadge from "./PantheonRoleBadge";
 import { Icon } from "./Icon";
 import { useDragWidth } from "../useDragWidth";
@@ -439,6 +439,10 @@ export function ChatPage(props: {
   onRailWidth: (w: number) => void;
   /** ширина контента (окно − сайдбар), px */
   widthPx: number;
+  /** инкремент = команда «Новый чат» (сброс + чистая session/new) */
+  newChatToken: number;
+  /** сообщает App id открытой/созданной сессии (подсветка в сайдбаре) */
+  onSessionChange?: (id: string) => void;
   t: WaveTheme;
   onOpenSubagent: (id: string) => void;
   pendingSession: string | null;
@@ -520,8 +524,9 @@ export function ChatPage(props: {
         await s.start();
       }
       if (sessionRef.current === active && active.id) {
-        chatSession.lastSid = active.id;
+        setLastSid(active.id);
         lastSidRef.current = active.id;
+        props.onSessionChange?.(active.id);
       }
     } catch (e) {
       if (sessionRef.current === active) {
@@ -558,7 +563,7 @@ export function ChatPage(props: {
       try {
         await s.load(id);
         if (sessionRef.current === s && s.id) {
-          chatSession.lastSid = s.id;
+          setLastSid(s.id);
           lastSidRef.current = s.id;
         }
       } catch {
@@ -569,7 +574,7 @@ export function ChatPage(props: {
         try {
           await s2.start();
           if (sessionRef.current === s2 && s2.id) {
-            chatSession.lastSid = s2.id;
+            setLastSid(s2.id);
             lastSidRef.current = s2.id;
           }
         } catch (e2) {
@@ -599,6 +604,39 @@ export function ChatPage(props: {
     const iv = setInterval(load, 15000);
     return () => clearInterval(iv);
   }, []);
+
+  // «Новый чат»: полный сброс + чистая session/new (lastSid=null)
+  useEffect(() => {
+    if (!props.newChatToken) return;
+    sessionRef.current?.disconnect();
+    setMessages([]);
+    setTodos(null);
+    setSubagents([]);
+    setError("");
+    setStreaming(false);
+    setAttachments([]);
+    setLastSid(null);
+    lastSidRef.current = null;
+    setStatus("starting");
+    const s = makeSession();
+    sessionRef.current = s;
+    void (async () => {
+      try {
+        await s.start();
+        if (sessionRef.current === s && s.id) {
+          setLastSid(s.id);
+          lastSidRef.current = s.id;
+          props.onSessionChange?.(s.id);
+        }
+      } catch (e) {
+        if (sessionRef.current === s) {
+          setError(errText(e).slice(0, 200));
+          setStatus("error");
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.newChatToken]);
 
   // лимиты контекста + порог автосжатия
   useEffect(() => {
@@ -791,7 +829,7 @@ export function ChatPage(props: {
     try {
       await s.load(id);
       if (sessionRef.current === s && s.id) {
-        chatSession.lastSid = s.id;
+        setLastSid(s.id);
         lastSidRef.current = s.id;
       }
     } catch (e) {
