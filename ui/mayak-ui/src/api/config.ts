@@ -7,7 +7,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { kvSet } from "./db";
 
@@ -158,6 +158,50 @@ export function savePromptFile(name: string, content: string): void {
   const p = join(dir, name);
   if (existsSync(p)) copyFileSync(p, join(dir, `${name}.bak`));
   writeFileSync(p, content);
+}
+
+// ── Рецепты: ~/.config/goose/recipes/*.yaml (паритет list_recipes) ──
+
+export interface RecipeRow {
+  file: string;
+  title: string;
+  description: string;
+  path: string;
+}
+
+export function listRecipes(): RecipeRow[] {
+  const dir = join(homedir(), ".config/goose/recipes");
+  const out: RecipeRow[] = [];
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return out;
+  }
+  for (const f of entries) {
+    if (!f.endsWith(".yaml") && !f.endsWith(".yml")) continue;
+    const full = join(dir, f);
+    let raw = "";
+    try {
+      raw = readFileSync(full, "utf8");
+    } catch {
+      raw = "";
+    }
+    const pick = (key: string): string => {
+      const line = raw.split("\n").find((l) => l.startsWith(`${key}:`));
+      return line ? line.slice(key.length + 1).trim() : "";
+    };
+    out.push({ file: f, title: pick("title"), description: pick("description"), path: full });
+  }
+  return out;
+}
+
+/** Открыть HTML-приложение goose (xdg-open) — паритет open_app */
+export function openApp(name: string): void {
+  const path = join(homedir(), `.local/share/goose/apps/${name}.html`);
+  if (!existsSync(path)) throw new Error(`${name} не найден`);
+  const r = spawnSync("xdg-open", [path], { stdio: "ignore" });
+  if (r.error) throw new Error(String(r.error));
 }
 
 // ── Приложение: пути и лимиты ──

@@ -9,20 +9,15 @@ import Sidebar, { type Page } from "./components/Sidebar";
 import SubagentStream from "./components/SubagentStream";
 import SplitPane from "./components/SplitPane";
 import { ChatPage } from "./components/Chat";
+import PantheonPanel from "./components/PantheonPanel";
+import { Extensions } from "./components/Extensions";
+import { History, Recipes } from "./components/SimplePages";
+import { AppsPage } from "./components/AppsPage";
+import { Scheduler } from "./components/Scheduler";
+import { Settings } from "./components/Settings";
+import ChainEditor from "./components/ChainEditor";
 import { autoTheme, dark, light, type ThemeMode, type WaveTheme } from "./tokens";
 import { winKeys } from "./windowKeys";
-
-// Страницы шага 7 — временные заглушки ( заменяются на полные порты )
-function StubPage(props: { title: string; t: WaveTheme }) {
-  return (
-    <div style={{display: "flex",  padding: 24, flexDirection: "column", gap: 8 }}>
-      <text style={{ fontSize: 20, color: props.t.text, fontWeight: 650 }}>{props.title}</text>
-      <text style={{ fontSize: 13.5, color: props.t.dim }}>
-        Страница будет перенесена на GPUIX на шаге 7 плана Phase 4.
-      </text>
-    </div>
-  );
-}
 
 export default function App() {
   const win = useWindowSize();
@@ -92,28 +87,28 @@ export default function App() {
       );
       break;
     case "extensions":
-      content = <StubPage title="Расширения" t={t} />;
+      content = <Extensions t={t} />;
       break;
     case "history":
-      content = <StubPage title="История сессий" t={t} />;
+      content = <History t={t} onOpenSession={openSession} />;
       break;
     case "recipes":
-      content = <StubPage title="Рецепты" t={t} />;
+      content = <Recipes t={t} />;
       break;
     case "settings":
-      content = <StubPage title="Настройки" t={t} />;
+      content = <Settings t={t} />;
       break;
     case "apps":
-      content = <StubPage title="Приложения" t={t} />;
+      content = <AppsPage t={t} />;
       break;
     case "scheduler":
-      content = <StubPage title="Планировщик" t={t} />;
+      content = <Scheduler t={t} />;
       break;
     case "pantheon":
-      content = <StubPage title="Панель Маяка" t={t} />;
+      content = <PantheonPanel t={t} />;
       break;
     case "chains":
-      content = <StubPage title="Цепочки агентов" t={t} />;
+      content = <ChainEditor t={t} />;
       break;
   }
 
