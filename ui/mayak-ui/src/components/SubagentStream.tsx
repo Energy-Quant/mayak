@@ -87,6 +87,41 @@ function CopyBtn(props: { text: string; t: WaveTheme }) {
   );
 }
 
+/** Thinking: скрыт по умолчанию — только заголовок, клик раскрывает (паритет чата) */
+const ThinkingRow = memo(function ThinkingRow(props: { text: string; t: WaveTheme }) {
+  const [open, setOpen] = useState(false);
+  const t = props.t;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          cursor: "pointer",
+        }}
+      >
+        <div
+          style={{
+            width: 9,
+            height: 9,
+            borderRadius: 5,
+            backgroundColor: open ? t.violet : t.faint,
+            flexShrink: 0,
+          }}
+        />
+        <text style={{ fontSize: fs.xs2, color: t.faint, fontWeight: 650 }}>Thinking</text>
+        <text style={{ fontSize: fs.xs2, color: t.faint, opacity: 0.8 }}>
+          {open ? "▴ свернуть" : "▸ показать"}
+        </text>
+      </div>
+      {open ? <Markdown source={props.text} t={t} /> : null}
+    </div>
+  );
+});
+
 const SubMsg = memo(function SubMsg(props: {
   m: SubagentMessage;
   isFirstUser: boolean;
@@ -149,14 +184,7 @@ const SubMsg = memo(function SubMsg(props: {
   <div style={{display: "flex",  flexDirection: "column", gap: 6, minWidth: 0 }}>
         {blocks.map((b, j) => {
           if (b.kind === "thinking") {
-            return (
-              <div key={j} style={{display: "flex",  flexDirection: "column", gap: 4 }}>
-                <text style={{ fontSize: fs.xs2, color: t.faint, fontWeight: 650 }}>💭 Рассуждения</text>
-                <Expandable t={t} collapsed={72} label="Показать цепочку мышления">
-                  <Markdown source={b.text} t={t} />
-                </Expandable>
-              </div>
-            );
+            return <ThinkingRow key={j} text={b.text} t={t} />;
           }
           if (b.kind === "tool" || b.kind === "tool_out") {
             return (

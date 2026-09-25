@@ -119,13 +119,15 @@ function ExpandableBody(props: {
   );
 }
 
-function CopyBtn(props: { text: string; t: WaveTheme }) {
+function CopyBtn(props: { text: string; t: WaveTheme; light?: boolean }) {
   const [copied, setCopied] = useState(false);
   const copy = useCallback(() => {
     copyText(props.text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1200);
   }, [props.text]);
+  const border = props.light ? "rgba(255,255,255,0.45)" : props.t.border;
+  const fg = props.light ? "#ffffff" : copied ? props.t.green : props.t.faint;
   return (
     <div
       onClick={copy}
@@ -136,24 +138,50 @@ function CopyBtn(props: { text: string; t: WaveTheme }) {
         paddingBottom: 2,
         borderRadius: 6,
         borderWidth: 1,
-        borderColor: props.t.border,
+        borderColor: border,
         cursor: "pointer",
-        opacity: 0.7,
+        opacity: 0.85,
       }}
     >
-      <text style={{ fontSize: fs.xs, color: copied ? props.t.green : props.t.faint }}>
-        {copied ? "✓" : "⧉"}
-      </text>
+      <text style={{ fontSize: fs.xs, color: fg }}>{copied ? "✓" : "⧉"}</text>
     </div>
   );
+}
+
+/** Плавная пульсация (sin): active → opacity 0.35..1, иначе 1 */
+function usePulse(active: boolean, periodMs = 1100): number {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const iv = setInterval(() => setTick((x) => x + 1), 80);
+    return () => clearInterval(iv);
+  }, [active]);
+  if (!active) return 1;
+  const phase = ((tick * 80) / periodMs) * Math.PI * 2;
+  return 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(phase));
+}
+
+const SPIN_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+/** Braille-спиннер для долгих инструментов */
+function useSpinner(active: boolean): string {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const iv = setInterval(() => setI((x) => x + 1), 100);
+    return () => clearInterval(iv);
+  }, [active]);
+  return active ? SPIN_FRAMES[i % SPIN_FRAMES.length] : "";
 }
 
 const MessageItem = React.memo(function MessageItem(props: {
   m: ChatMessage;
   t: WaveTheme;
   onSubagent: (id: string) => void;
+  streaming: boolean;
+  isLast: boolean;
 }) {
   const { m, t } = props;
+  const [open, setOpen] = useState(false);
   const th: ToolTheme = useMemo(
     () => ({
       dim: t.dim,
@@ -170,60 +198,117 @@ const MessageItem = React.memo(function MessageItem(props: {
   );
 
   const copySrc = m.role === "tool" ? (m.toolInput ?? m.text ?? "") : (m.text ?? "");
+  // thinking «в работе» = стрим + это последнее (вспыхивает только свежая цепочка)
+  const thinkingActive =
+    m.role === "thinking" && props.streaming && !!m.chunk && props.isLast;
+  const toolActive =
+    m.role === "tool" && (m.toolStatus === "pending" || m.toolStatus === "in_progress");
+  const pulse = usePulse(thinkingActive);
+  const spin = useSpinner(toolActive);
 
   if (m.role === "thinking") {
     return (
       <div
-        style={{ display: "flex", 
+        style={{
+          display: "flex",
           backgroundColor: t.surface,
           borderWidth: 1,
           borderLeftWidth: 3,
-          borderColor: t.border,
+          borderColor: thinkingActive ? t.violet : t.border,
           borderRadius: 13,
           padding: 10,
           maxWidth: "96%",
+          width: "96%",
           flexDirection: "column",
           minWidth: 0,
+          position: "relative",
         }}
       >
-        <text style={{ fontSize: fs.xs2, color: t.faint, fontWeight: 650, marginBottom: 4 }}>
-          💭 Рассуждения
-        </text>
-        <ExpandableBody t={t} collapsed={64} label="Показать цепочку мышления">
-          <Markdown source={m.text ?? ""} t={t} />
-        </ExpandableBody>
+        <div
+          onClick={() => setOpen((v) => !v)}
+          style={{
+            display: "flex",
+            width: "100%",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            cursor: "pointer",
+          }}
+        >
+          <div
+            style={{
+              width: 9,
+              height: 9,
+              borderRadius: 5,
+              backgroundColor: thinkingActive ? t.violet : t.faint,
+              opacity: pulse,
+              flexShrink: 0,
+            }}
+          />
+          <text style={{ fontSize: fs.xs2, color: t.faint, fontWeight: 650 }}>
+            Thinking{thinkingActive ? "…" : ""}
+          </text>
+          <text style={{ fontSize: fs.xs2, color: t.faint, opacity: 0.8 }}>
+            {open ? "▴ свернуть" : "▸ показать"}
+          </text>
+          <div style={{ flexGrow: 1 }} />
+          <CopyBtn text={copySrc} t={t} />
+        </div>
+        {open ? (
+          <div style={{ display: "flex", width: "100%", flexDirection: "column", marginTop: 8 }}>
+            <Markdown source={m.text ?? ""} t={t} />
+          </div>
+        ) : null}
       </div>
     );
   }
 
   if (m.role === "tool") {
+    const failed = m.toolStatus === "failed";
     return (
       <div
-        style={{display: "flex", 
+        style={{
+          display: "flex",
           borderWidth: 1,
-          borderColor: m.toolStatus === "failed" ? t.error : t.border,
+          borderColor: failed ? t.error : toolActive ? t.gold : t.border,
           borderRadius: 13,
           padding: 10,
           backgroundColor: t.surface,
           maxWidth: "96%",
+          width: "96%",
           flexDirection: "column",
           minWidth: 0,
-          opacity: m.toolStatus === "failed" ? 0.8 : 1,
+          opacity: failed ? 0.8 : 1,
+          position: "relative",
         }}
       >
-        <div style={{display: "flex",  flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            width: "100%",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
           <div
-   style={{display: "flex", flexDirection: "column", 
+            style={{
+              display: "flex",
               width: 22,
               height: 22,
               borderRadius: 6,
               backgroundColor: t.glass,
               justifyContent: "center",
               alignItems: "center",
+              flexShrink: 0,
             }}
           >
-            <Icon name="app" size={13} color={t.cyan} />
+            <Icon name="app" size={13} color={toolActive ? t.gold : t.cyan} />
           </div>
+          {toolActive ? (
+            <text style={{ fontSize: fs.md, color: t.gold, whiteSpace: "nowrap" }}>{spin}</text>
+          ) : null}
           <text style={{ fontSize: fs.sm, color: t.text, fontWeight: 650 }}>{m.toolName}</text>
           {m.subagentSessionId ? (
             <div
@@ -242,9 +327,20 @@ const MessageItem = React.memo(function MessageItem(props: {
               <text style={{ fontSize: fs.xs, color: t.magenta }}>↗ субагент</text>
             </div>
           ) : null}
+          <div style={{ flexGrow: 1 }} />
           <CopyBtn text={copySrc} t={t} />
         </div>
-        <div style={{ marginTop: 6, borderTopWidth: 1, paddingTop: 6, borderColor: t.border }}>
+        <div
+          style={{
+            display: "flex",
+            width: "100%",
+            marginTop: 6,
+            borderTopWidth: 1,
+            paddingTop: 6,
+            borderColor: t.border,
+            flexDirection: "column",
+          }}
+        >
           <ExpandableBody t={t} collapsed={96} label="Раскрыть вызов">
             <ToolBody toolName={m.toolName ?? ""} rawText={m.toolInput ?? m.text ?? ""} theme={th} />
           </ExpandableBody>
@@ -255,56 +351,66 @@ const MessageItem = React.memo(function MessageItem(props: {
 
   if (m.role === "user") {
     return (
-      <div style={{display: "flex", width: "100%", flexDirection: "column", alignItems: "flex-end" }}>
-      <div style={{display: "flex", maxWidth: "88%", flexDirection: "row", gap: 6, minWidth: 0 }}>
+      <div
+        style={{
+          display: "flex",
+          width: "100%",
+          flexDirection: "column",
+          alignItems: "flex-end",
+        }}
+      >
         <div
-          style={{display: "flex", flexDirection: "column", 
+          style={{
+            display: "flex",
+            maxWidth: "88%",
+            flexDirection: "column",
+            minWidth: 0,
+            position: "relative",
             backgroundColor: t.userBubble,
             borderTopRightRadius: 24,
             borderBottomRightRadius: 6,
             borderBottomLeftRadius: 24,
             borderTopLeftRadius: 24,
             paddingLeft: 15,
-            paddingRight: 15,
+            paddingRight: 34,
             paddingTop: 10,
             paddingBottom: 10,
-            minWidth: 0,
-            flexGrow: 1,
-         }}
+          }}
         >
-          <UserText text={m.text ?? ""} t={t}fontSize={fs.base} />
+          <UserText text={m.text ?? ""} t={t} fontSize={fs.base} />
+          <div style={{ position: "absolute", top: 8, right: 8 }}>
+            <CopyBtn text={copySrc} t={t} light />
+          </div>
         </div>
-        <div style={{display: "flex", flexDirection: "column",  alignSelf: "flex-start" }}>
-          <CopyBtn text={copySrc} t={t} />
-        </div>
-      </div>
       </div>
     );
   }
 
   // agent
   return (
-    <div style={{display: "flex",  maxWidth: "96%", alignSelf: "flex-start", flexDirection: "row", gap: 6, minWidth: 0 }}>
-      <div
-        style={{display: "flex", flexDirection: "column", 
-          backgroundColor: t.surface,
-          borderWidth: 1,
-          borderColor: t.border,
-          borderTopRightRadius: 24,
-            borderBottomRightRadius: 24,
-            borderBottomLeftRadius: 6,
-            borderTopLeftRadius: 24,
-          paddingLeft: 15,
-          paddingRight: 15,
-          paddingTop: 10,
-          paddingBottom: 10,
-          minWidth: 0,
-          flexGrow: 1,
-        }}
-      >
-        <Markdown source={m.text ?? ""} t={t} />
-      </div>
-      <div style={{display: "flex", flexDirection: "column",  alignSelf: "flex-start" }}>
+    <div
+      style={{
+        display: "flex",
+        maxWidth: "96%",
+        width: "96%",
+        flexDirection: "column",
+        minWidth: 0,
+        position: "relative",
+        backgroundColor: t.surface,
+        borderWidth: 1,
+        borderColor: t.border,
+        borderTopRightRadius: 24,
+        borderBottomRightRadius: 24,
+        borderBottomLeftRadius: 6,
+        borderTopLeftRadius: 24,
+        paddingLeft: 15,
+        paddingRight: 34,
+        paddingTop: 10,
+        paddingBottom: 10,
+      }}
+    >
+      <Markdown source={m.text ?? ""} t={t} />
+      <div style={{ position: "absolute", top: 8, right: 8 }}>
         <CopyBtn text={copySrc} t={t} />
       </div>
     </div>
@@ -492,10 +598,17 @@ export function ChatPage(props: {
   const messageRows = useMemo(
     () =>
       messages.map((m, i) => (
-        <MessageItem key={m.id + i} m={m} t={t} onSubagent={props.onOpenSubagent} />
+        <MessageItem
+          key={m.id + i}
+          m={m}
+          t={t}
+          onSubagent={props.onOpenSubagent}
+          streaming={streaming}
+          isLast={i === messages.length - 1}
+        />
       )),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [messages, t, props.onOpenSubagent],
+    [messages, t, props.onOpenSubagent, streaming],
   );
 
   return (
@@ -696,7 +809,7 @@ export function ChatPage(props: {
         >
           <textarea
             value={input}
-            placeholder="Сообщение… (Enter — отправить, Shift+Enter — новая строка)"
+            placeholder="Сообщение… (Enter — отправить)"
             minRows={1}
             maxRows={8}
             onChange={(e) => setInput(e.value ?? "")}
