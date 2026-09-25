@@ -1,11 +1,11 @@
 /**
  * Settings — 9 вкладок: Модели | Пользовательский интерфейс | Чат | Внешний вид |
- * Программы | Клавиатура | Авторизация | Приложение | Пантеон.
+ * Программы | Клавиатура | Авторизация | Приложение | Состояние.
  * Порт Settings.tsx (480 строк, Tauri/CSS) → GPUIX 0.10 (style-объекты, без DOM).
  * Toggle — локальная копия: НЕ импортируем ./Extensions (чужой файл не трогаем).
  */
 import { useEffect, useState, type ReactNode } from "react";
-import { AgentSettings } from "./AgentSettings";
+import PantheonPanel from "./PantheonPanel";
 import Keyboard from "./Keyboard";
 import Auth from "./Auth";
 import { Icon } from "./Icon";
@@ -37,7 +37,7 @@ const TABS = [
   ["keys", "Клавиатура"],
   ["auth", "Авторизация"],
   ["app", "Приложение"],
-  ["pantheon", "Пантеон"],
+  ["state", "Состояние"],
 ] as const;
 type Tab = (typeof TABS)[number][0];
 
@@ -294,7 +294,10 @@ function ToggleCard(props: { t: WaveTheme; title: string; desc: string; on?: boo
 
 /* ── страница ── */
 
-export function Settings(props: { t: WaveTheme }) {
+export function Settings(props: {
+  t: WaveTheme;
+  onThemeChange?: (mode: "light" | "dark" | "auto") => void;
+}) {
   const t = props.t;
   const [tab, setTab] = useState<Tab>("models");
 
@@ -354,12 +357,12 @@ export function Settings(props: { t: WaveTheme }) {
       {tab === "models" && <ModelsTab t={t} />}
       {tab === "ui" && <UiTab t={t} />}
       {tab === "chat" && <ChatTab t={t} />}
-      {tab === "appearance" && <AppearanceTab t={t} />}
+      {tab === "appearance" && <AppearanceTab t={t} onThemeChange={props.onThemeChange} />}
       {tab === "programs" && <ProgramsTab t={t} />}
       {tab === "keys" && <Keyboard t={t} />}
       {tab === "auth" && <Auth t={t} />}
-      {tab === "app" && <AppTab t={t} />}
-      {tab === "pantheon" && <AgentSettings t={t} />}
+      {tab === "app" && <AppTab t={t} onThemeChange={props.onThemeChange} />}
+      {tab === "state" && <PantheonPanel t={t} />}
     </div>
   );
 }
@@ -697,13 +700,17 @@ function StylesCard(props: { t: WaveTheme }) {
 
 /* ── Внешний вид ── */
 
-function AppearanceTab(props: { t: WaveTheme }) {
+function AppearanceTab(props: {
+  t: WaveTheme;
+  onThemeChange?: (mode: "light" | "dark" | "auto") => void;
+}) {
   const t = props.t;
   const [theme, setTheme] = useState<string>(() => readThemeMode());
 
   const pick = (v: string) => {
     globalThis.localStorage?.setItem(THEME_KEY, v);
     setTheme(v);
+    props.onThemeChange?.(v as "light" | "dark" | "auto");
   };
 
   return (
@@ -881,7 +888,10 @@ function ProgramsTab(props: { t: WaveTheme }) {
 
 /* ── Приложение ── */
 
-function AppTab(props: { t: WaveTheme }) {
+function AppTab(props: {
+  t: WaveTheme;
+  onThemeChange?: (mode: "light" | "dark" | "auto") => void;
+}) {
   const t = props.t;
   const [paths, setPaths] = useState<ConfigPaths | null>(null);
   const [limits, setLimits] = useState<ConfigLimits | null>(null);
@@ -905,10 +915,12 @@ function AppTab(props: { t: WaveTheme }) {
   const toggleAuto = (v: boolean) => {
     if (v) {
       globalThis.localStorage?.setItem(THEME_KEY, "auto");
+      props.onThemeChange?.("auto");
       setAuto(true);
     } else {
       const cur = autoTheme();
       globalThis.localStorage?.setItem(THEME_KEY, cur);
+      props.onThemeChange?.(cur);
       setAuto(false);
     }
     setMsg("");

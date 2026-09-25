@@ -91,25 +91,6 @@ export default function SplitPane(props: {
           <div
             style={{display: "flex", flexDirection: "column",  flexGrow: 1, minWidth: 0, overflow: "hidden", position: "relative" }}
           >
-            <div
-              onClick={props.onCloseRight}
-              style={{
-                position: "absolute",
-                top: 8,
-                right: 8,
-                paddingLeft: 8,
-                paddingRight: 8,
-                paddingTop: 4,
-                paddingBottom: 4,
-                borderRadius: 9,
-                backgroundColor: props.buttonBg,
-                borderWidth: 1,
-                borderColor: props.borderColor,
-                cursor: "pointer",
-              }}
-            >
-              <text style={{ color: props.buttonText, fontSize: 12 }}>✕</text>
-            </div>
             {right}
           </div>
         </>

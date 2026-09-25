@@ -26,7 +26,6 @@ const NAV: { id: Page; label: string; icon: IconName }[] = [
   { id: "extensions", label: "Расширения", icon: "puzzle" },
   { id: "scheduler", label: "Планировщик", icon: "clock" },
   { id: "history", label: "История сессий", icon: "history" },
-  { id: "pantheon", label: "Панель Маяка", icon: "goose" },
   { id: "chains", label: "Цепочки агентов", icon: "clipboard" },
 ];
 
@@ -49,7 +48,11 @@ export default function Sidebar(props: {
         setSessions(
           // Иерархия: слева — только основные чаты; sub_agent/hidden/gateway и дети — внутрь
           listSessions(false).filter(
-            (s) => !["sub_agent", "hidden", "gateway"].includes(s.session_type) && !s.parent_session_id,
+            (s) =>
+              !["sub_agent", "hidden", "gateway"].includes(s.session_type) &&
+              !s.parent_session_id &&
+              // пустые спам-сессии «New Chat» (0 токенов) от переподключений — не показываем
+              !(s.title === "New Chat" && s.total_tokens === 0),
           ),
         );
       } catch {

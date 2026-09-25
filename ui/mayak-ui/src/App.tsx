@@ -9,7 +9,6 @@ import Sidebar, { type Page } from "./components/Sidebar";
 import SubagentStream from "./components/SubagentStream";
 import SplitPane from "./components/SplitPane";
 import { ChatPage } from "./components/Chat";
-import PantheonPanel from "./components/PantheonPanel";
 import { Extensions } from "./components/Extensions";
 import { History, Recipes } from "./components/SimplePages";
 import { AppsPage } from "./components/AppsPage";
@@ -96,16 +95,21 @@ export default function App() {
       content = <Recipes t={t} />;
       break;
     case "settings":
-      content = <Settings t={t} />;
+      content = (
+        <Settings
+          t={t}
+          onThemeChange={(m) => {
+            globalThis.localStorage?.setItem("mayak-theme", m);
+            setMode(m === "auto" ? autoTheme() : m);
+          }}
+        />
+      );
       break;
     case "apps":
       content = <AppsPage t={t} />;
       break;
     case "scheduler":
       content = <Scheduler t={t} />;
-      break;
-    case "pantheon":
-      content = <PantheonPanel t={t} />;
       break;
     case "chains":
       content = <ChainEditor t={t} />;

@@ -16,7 +16,7 @@ import {
   type SubagentRow,
   type TodoItem,
 } from "../acp";
-import { getConfigSummary, getConfigLimits } from "../api/config";
+import { getConfigSummary, getConfigLimits, getAgentChains } from "../api/config";
 import { getProviderCatalog } from "../api/catalog";
 import { listSessions } from "../api/db";
 import { clipboardImage, copyText } from "../api/clipboard";
@@ -28,6 +28,7 @@ import {
   toDataUrl,
 } from "../api/attachments";
 import { winKeys } from "../windowKeys";
+import { chatSession } from "../chatSession";
 import PantheonRoleBadge from "./PantheonRoleBadge";
 import { Icon } from "./Icon";
 import { useDragWidth } from "../useDragWidth";
@@ -75,11 +76,9 @@ function fmtTokens(n: number | null): string {
   return String(n);
 }
 
-function statusLabel(s: string) {
+function statusLabelBase(s: string) {
   return (
-    { idle: "не подключено", starting: "подключение…", ready: "готов · glm-5.3-flash", error: "ошибка" }[
-      s
-    ] ?? s
+    { idle: "не подключено", starting: "подключение…", ready: "готов", error: "ошибка" }[s] ?? s
   );
 }
 
@@ -97,7 +96,7 @@ function ExpandableBody(props: {
       <div
         style={
           open
-            ? {display: "flex",  overflow: "hidden", flexDirection: "column", minWidth: 0 }
+            ? {display: "flex",  flexDirection: "column", minWidth: 0, width: "100%" }
             : {display: "flex", 
                 maxHeight: collapsed,
                 overflow: "hidden",
@@ -270,7 +269,7 @@ const MessageItem = React.memo(function MessageItem(props: {
               width: "100%",
               flexDirection: "column",
               paddingLeft: 22,
-              opacity: 0.88,
+              opacity: 0.65,
             }}
           >
             <Markdown source={italicize(m.text ?? "")} t={t} />
@@ -380,6 +379,7 @@ const MessageItem = React.memo(function MessageItem(props: {
           style={{
             display: "flex",
             maxWidth: "88%",
+            width: "100%",
             flexDirection: "column",
             minWidth: 0,
             position: "relative",
@@ -463,6 +463,8 @@ export function ChatPage(props: {
   const [error, setError] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  /** выбранная в «Цепочках» модель goose — для плашки в топбаре */
+  const [gooseModel, setGooseModel] = useState({ provider: "opencode_go", model: "glm-5.3-flash" });
   const { renderer } = useGpuix();
   const MAX_ATTACH = 8;
   const sessionRef = useRef<AcpSession | null>(null);
@@ -496,16 +498,33 @@ export function ChatPage(props: {
     });
 
   const connect = useCallback(async () => {
-    sessionRef.current?.stop(true);
+    sessionRef.current?.stop(false);
     setError("");
     setStatus("starting");
     const s = makeSession();
     sessionRef.current = s;
+    let active: AcpSession = s;
     try {
-      await s.start();
-      if (sessionRef.current === s) lastSidRef.current = s.id;
+      if (chatSession.lastSid) {
+        try {
+          await s.load(chatSession.lastSid); // история replay'ится (start(loadId))
+        } catch {
+          // sid протух — fallback: новая сессия (session/new)
+          s.stop(false);
+          const s2 = makeSession();
+          sessionRef.current = s2;
+          active = s2;
+          await s2.start();
+        }
+      } else {
+        await s.start();
+      }
+      if (sessionRef.current === active && active.id) {
+        chatSession.lastSid = active.id;
+        lastSidRef.current = active.id;
+      }
     } catch (e) {
-      if (sessionRef.current === s) {
+      if (sessionRef.current === active) {
         setError(errText(e).slice(0, 200));
         setStatus("error");
       }
@@ -518,7 +537,7 @@ export function ChatPage(props: {
     if (startedRef.current) return;
     startedRef.current = true;
     void connect();
-    return () => sessionRef.current?.stop(true);
+    return () => sessionRef.current?.stop(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -538,17 +557,48 @@ export function ChatPage(props: {
       sessionRef.current = s;
       try {
         await s.load(id);
-        if (sessionRef.current === s) lastSidRef.current = s.id;
-      } catch (e) {
-        if (sessionRef.current === s) {
-          setError(`Не удалось открыть сессию: ${errText(e).slice(0, 160)}`);
-          setStatus("error");
+        if (sessionRef.current === s && s.id) {
+          chatSession.lastSid = s.id;
+          lastSidRef.current = s.id;
+        }
+      } catch {
+        // sid протух — fallback: новая сессия (session/new), как в connect()
+        s.stop(false);
+        const s2 = makeSession();
+        sessionRef.current = s2;
+        try {
+          await s2.start();
+          if (sessionRef.current === s2 && s2.id) {
+            chatSession.lastSid = s2.id;
+            lastSidRef.current = s2.id;
+          }
+        } catch (e2) {
+          if (sessionRef.current === s2) {
+            setError(`Не удалось открыть сессию: ${errText(e2).slice(0, 160)}`);
+            setStatus("error");
+          }
         }
       }
     };
     void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.pendingSession]);
+
+  // модель goose из «Цепочек» (полл — смена в настройках подхватывается)
+  useEffect(() => {
+    const load = () => {
+      try {
+        const ch = getAgentChains().find((c) => c.role === "goose");
+        if (ch?.primary?.model)
+          setGooseModel({ provider: ch.primary.provider, model: ch.primary.model });
+      } catch {
+        /* toml недоступен — оставляем прежнюю */
+      }
+    };
+    load();
+    const iv = setInterval(load, 15000);
+    return () => clearInterval(iv);
+  }, []);
 
   // лимиты контекста + порог автосжатия
   useEffect(() => {
@@ -639,6 +689,11 @@ export function ChatPage(props: {
         );
       }
     }
+  };
+
+  /** DnD: событие приходит элементу ПОД КУРСОРОМ (не всплывает) — вешаем на все крупные зоны */
+  const onDropPaths = (ev: { paths?: string[] }) => {
+    if (ev.paths?.length) void ingestPaths(ev.paths);
   };
 
   // Ctrl+V → нативный wl-paste (паритет keydown-пути legacy)
@@ -735,7 +790,10 @@ export function ChatPage(props: {
     sessionRef.current = s;
     try {
       await s.load(id);
-      if (sessionRef.current === s) lastSidRef.current = s.id;
+      if (sessionRef.current === s && s.id) {
+        chatSession.lastSid = s.id;
+        lastSidRef.current = s.id;
+      }
     } catch (e) {
       if (sessionRef.current === s) {
         setError(`Переподключение: ${errText(e).slice(0, 160)}`);
@@ -765,12 +823,10 @@ export function ChatPage(props: {
 
   return (
     <div
-      style={{display: "flex", width: props.widthPx, flexDirection: "row", height: "100%", minWidth: 0 }}
-      onFileDrop={(ev) => {
-        if (ev.paths && ev.paths.length) void ingestPaths(ev.paths);
-      }}
+      style={{display: "flex", width: "100%", flexDirection: "row", height: "100%", minWidth: 0 }}
+      onFileDrop={onDropPaths}
     >
-      <div style={{display: "flex", width: hasConversation ? Math.max(0, props.widthPx - props.railWidth) : props.widthPx, flexDirection: "column", flexShrink: 0, minWidth: 0, height: "100%", backgroundColor: t.bg }}>
+      <div style={{display: "flex", flexGrow: 1, flexShrink: 1, minWidth: 0, flexDirection: "column", height: "100%", backgroundColor: t.bg }} onFileDrop={onDropPaths}>
         {/* topbar */}
         <div
           style={{display: "flex", 
@@ -787,9 +843,10 @@ export function ChatPage(props: {
             flexWrap: "wrap",
             width: "100%",
           }}
+          onFileDrop={onDropPaths}
         >
           <PantheonRoleBadge
-            badge={{ role: "goose", model: "opencode_go/glm-5.3-flash", cost: "MEDIUM" }}
+            badge={{ role: "goose", model: `${gooseModel.provider}/${gooseModel.model}`, cost: "MEDIUM" }}
             colors={{
               surface: t.surface,
               border: t.border,
@@ -808,7 +865,7 @@ export function ChatPage(props: {
               color: status === "ready" ? t.green : status === "error" ? t.error : t.faint,
       }}
           >
-            {`${statusLabel(status)}${streaming ? " · ответ…" : ""}`}
+            {`${statusLabelBase(status)}${status === "ready" ? ` · ${gooseModel.model}` : ""}${streaming ? " · ответ…" : ""}`}
           </text>
           <div style={{display: "flex", flexDirection: "column",  flexGrow: 1 }} />
           {hasConversation ? (
@@ -860,7 +917,7 @@ export function ChatPage(props: {
 
         {/* тело: welcome или виртуальный список */}
         {!hasConversation ? (
-          <div style={{display: "flex", width: "100%", flexDirection: "column", flexGrow:1, justifyContent: "center", alignItems: "center", padding: sp[5] }}>
+          <div style={{display: "flex", width: "100%", flexDirection: "column", flexGrow:1, justifyContent: "center", alignItems: "center", padding: sp[5] }} onFileDrop={onDropPaths}>
             <div style={{display: "flex", flexDirection: "column",  alignItems: "center", gap: 6 }}>
               <Clock t={t} />
               {status === "error" ? (
@@ -903,7 +960,7 @@ export function ChatPage(props: {
             </div>
           </div>
         ) : (
-          <div style={{display: "flex", width: "100%", flexDirection: "column", flexGrow: 1, minHeight: 0, padding: sp[5] }}>
+          <div style={{display: "flex", width: "100%", flexDirection: "column", flexGrow: 1, minHeight: 0, padding: sp[5] }} onFileDrop={onDropPaths}>
             {error ? (
               <div
                 style={{
@@ -957,6 +1014,7 @@ export function ChatPage(props: {
         {/* вложения */}
         {attachments.length > 0 && (
           <div
+            onFileDrop={onDropPaths}
             style={{
               display: "flex",
               flexDirection: "row",
@@ -1020,6 +1078,7 @@ export function ChatPage(props: {
             paddingBottom: sp[5],
             alignItems: "flex-end",
           }}
+          onFileDrop={onDropPaths}
         >
           <div
             onClick={() => {
@@ -1048,6 +1107,7 @@ export function ChatPage(props: {
             <Icon name="paperclip" size={16} color={t.dim} />
           </div>
           <div
+            onFileDrop={onDropPaths}
             style={{
               display: "flex",
               flexGrow: 1,
@@ -1061,6 +1121,7 @@ export function ChatPage(props: {
               placeholder="Сообщение… (Enter — отправить)"
               minRows={1}
               maxRows={8}
+              onFileDrop={onDropPaths}
               onChange={(e) => setInput(e.value ?? "")}
               onSubmit={(e) => {
                 if (!e.modifiers?.shift) void send();
