@@ -27,6 +27,14 @@ export function Markdown(props: { source: string; t: WaveTheme }) {
   return <markdown source={props.source} theme={mdTheme(props.t)} />;
 }
 
+/** Курсив для thinking: построчно (italic не переносится между строками в markdown) */
+export function italicize(src: string): string {
+  return (src ?? "")
+    .split("\n")
+    .map((l) => (l.trim() ? `*${l.replace(/\*/g, "\\*")}*` : ""))
+    .join("\n");
+}
+
 /** Пользовательский текст: сохраняем \n (строками — GPUI не склеивает) */
 export function UserText(props: { text: string; t: WaveTheme; fontSize: number }) {
   const lines = (props.text ?? "").split("\n");

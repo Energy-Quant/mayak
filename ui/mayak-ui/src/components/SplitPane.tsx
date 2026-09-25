@@ -15,6 +15,8 @@ export default function SplitPane(props: {
   buttonBg: string;
   buttonText: string;
   borderColor: string;
+  /** ширина контента (окно − сайдбар), px — row-элементам нужен px/grow, НЕ width:100% */
+  widthPx: number;
 }) {
   const { left, right, initialRatio = 0.6 } = props;
   const [ratio, setRatio] = useState(initialRatio);
@@ -45,15 +47,30 @@ export default function SplitPane(props: {
   }, []);
 
   return (
-    <div style={{display: "flex",  flexDirection: "row", height: "100%", flexGrow: 1, minWidth: 0 }}>
+    <div style={{display: "flex", width: props.widthPx, flexDirection: "row", height: "100%", flexShrink: 0, minWidth: 0 }}>
       <div
-        style={{display: "flex", 
-          width: right ? `${ratio * 100}%` : "100%",
-          minWidth: 220,
-          overflow: "hidden",
-          flexDirection: "column",
-          flexGrow: right ? 0 : 1,
-        }}
+        style={
+          right
+            ? {
+                display: "flex",
+                width: Math.round(ratio * props.widthPx),
+                flexGrow: 0,
+                flexShrink: 0,
+                minWidth: 0,
+                height: "100%",
+                overflow: "hidden",
+                flexDirection: "column",
+              }
+            : {
+                display: "flex",
+                width: props.widthPx,
+                flexShrink: 0,
+                minWidth: 0,
+                height: "100%",
+                overflow: "hidden",
+                flexDirection: "column",
+              }
+        }
       >
         {left}
       </div>
@@ -72,7 +89,7 @@ export default function SplitPane(props: {
             }}
           />
           <div
-            style={{display: "flex", flexDirection: "column",  flexGrow: 1, minWidth: 220, overflow: "hidden", position: "relative" }}
+            style={{display: "flex", flexDirection: "column",  flexGrow: 1, minWidth: 0, overflow: "hidden", position: "relative" }}
           >
             <div
               onClick={props.onCloseRight}

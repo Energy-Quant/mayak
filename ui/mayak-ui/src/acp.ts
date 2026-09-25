@@ -119,6 +119,8 @@ type Handlers = {
   onMessage: (m: ChatMessage) => void;
   onUpdateMessage: (id: string, patch: Partial<ChatMessage>) => void;
   onTodo: (items: TodoItem[]) => void;
+  /** usage_update: used = токены в контексте, size = окно (из ACP UsageUpdate) */
+  onUsage?: (u: { used: number; size?: number }) => void;
   onReady: () => void;
   onError: (e: string) => void;
 };
@@ -134,6 +136,9 @@ export class AcpSession {
   status: AcpStatus = "idle";
   /** реестр путей staged-изображений сессии — пробрасываем субагентам через delegate context */
   private sessionImagePaths: string[] = [];
+  /** после stop/disconnect — гасим все коллбэки и запросы (защита от «ACP connection closed» в новой сессии) */
+  private dead = false;
+  private wsStream: { writable?: { close?: () => Promise<void> } } | null = null;
 
   constructor(h: Handlers) {
     this.handlers = h;
@@ -149,6 +154,8 @@ export class AcpSession {
     // без location.origin (нет DOM): base exact-list зашит в gooseServer.baseOrigins()
     const serve = await startServer(workingDir);
     const stream = createWebSocketStream(serve.ws_url, { protocols: [] } as never);
+    this.wsStream = stream as never;
+    this.dead = false;
 
     const app = client({ name: "mayak-ui" })
       .onRequest(CLIENT_METHODS.session_request_permission, async (): Promise<any> => ({
@@ -199,6 +206,7 @@ export class AcpSession {
    */
   async prompt(text: string, images?: { data: string; mimeType: string }[], filePaths?: string[]) {
     if (!this.sessionId) throw new Error("сессия не открыта");
+    if (this.dead) throw new Error("сессия закрыта");
     let body = text;
     // регистрируем пути для контекста субагентов
     if (filePaths?.length) {
@@ -233,14 +241,28 @@ export class AcpSession {
     if (this.sessionId) this.connection!.agent.notify("session/cancel", { sessionId: this.sessionId });
   }
 
-  stop() {
-    stopServer().catch(() => {});
+  /** killServer=true — полный стоп (unmount/retry); false — только закрыть WS, сервер переиспользуется */
+  stop(killServer = true) {
+    this.dead = true;
+    try {
+      void this.wsStream?.writable?.close?.();
+    } catch {
+      /* уже закрыт */
+    }
+    this.wsStream = null;
+    if (killServer) stopServer().catch(() => {});
     this.status = "idle";
     this.sessionId = null;
     this.connection = null;
   }
 
+  /** Смена чата: закрыть WS, НЕ убивая goose serve (иначе — «ACP connection closed» у новой сессии) */
+  disconnect() {
+    this.stop(false);
+  }
+
   private handleSessionUpdate(u: Record<string, any>) {
+    if (this.dead) return;
     const up = u.update ?? u;
     const kind: string = up.sessionUpdate ?? "";
     const id: string = up.sessionId ?? up.toolCallId ?? crypto.randomUUID();
@@ -264,6 +286,12 @@ export class AcpSession {
       }
       case "user_message_chunk":
         break;
+      case "usage_update": {
+        const used = typeof up.used === "number" ? up.used : null;
+        const size = typeof up.size === "number" ? up.size : undefined;
+        if (used !== null) this.handlers.onUsage?.({ used, size });
+        break;
+      }
       case "tool_call": {
         const meta = (up._meta ?? {}) as { subagent_session_id?: string };
         const toolName = String(up.title ?? up.kind ?? "tool");

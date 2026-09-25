@@ -21,7 +21,7 @@ import PantheonRoleBadge from "./PantheonRoleBadge";
 import { Icon } from "./Icon";
 import { useDragWidth } from "../useDragWidth";
 import UsageBar from "./UsageBar";
-import { Markdown, UserText } from "./md";
+import { Markdown, UserText, italicize } from "./md";
 import { ToolBody, type ToolTheme } from "./toolRender";
 import { fs, font, sp, type WaveTheme } from "../tokens";
 
@@ -211,15 +211,13 @@ const MessageItem = React.memo(function MessageItem(props: {
       <div
         style={{
           display: "flex",
-          backgroundColor: t.surface,
-          borderWidth: 1,
-          borderLeftWidth: 3,
-          borderColor: thinkingActive ? t.violet : t.border,
-          borderRadius: 13,
-          padding: 10,
           maxWidth: "96%",
           width: "96%",
           flexDirection: "column",
+          gap: 6,
+          marginTop: 6,
+          marginBottom: 6,
+          paddingLeft: 4,
           minWidth: 0,
           position: "relative",
         }}
@@ -255,8 +253,16 @@ const MessageItem = React.memo(function MessageItem(props: {
           <CopyBtn text={copySrc} t={t} />
         </div>
         {open ? (
-          <div style={{ display: "flex", width: "100%", flexDirection: "column", marginTop: 8 }}>
-            <Markdown source={m.text ?? ""} t={t} />
+          <div
+            style={{
+              display: "flex",
+              width: "100%",
+              flexDirection: "column",
+              paddingLeft: 22,
+              opacity: 0.88,
+            }}
+          >
+            <Markdown source={italicize(m.text ?? "")} t={t} />
           </div>
         ) : null}
       </div>
@@ -371,14 +377,14 @@ const MessageItem = React.memo(function MessageItem(props: {
             borderBottomRightRadius: 6,
             borderBottomLeftRadius: 24,
             borderTopLeftRadius: 24,
-            paddingLeft: 15,
-            paddingRight: 34,
-            paddingTop: 10,
-            paddingBottom: 10,
+            paddingLeft: 17,
+            paddingRight: 42,
+            paddingTop: 12,
+            paddingBottom: 12,
           }}
         >
           <UserText text={m.text ?? ""} t={t} fontSize={fs.base} />
-          <div style={{ position: "absolute", top: 8, right: 8 }}>
+          <div style={{ position: "absolute", top: 10, right: 10 }}>
             <CopyBtn text={copySrc} t={t} light />
           </div>
         </div>
@@ -403,14 +409,14 @@ const MessageItem = React.memo(function MessageItem(props: {
         borderBottomRightRadius: 24,
         borderBottomLeftRadius: 6,
         borderTopLeftRadius: 24,
-        paddingLeft: 15,
-        paddingRight: 34,
-        paddingTop: 10,
-        paddingBottom: 10,
+        paddingLeft: 17,
+        paddingRight: 42,
+        paddingTop: 12,
+        paddingBottom: 12,
       }}
     >
       <Markdown source={m.text ?? ""} t={t} />
-      <div style={{ position: "absolute", top: 8, right: 8 }}>
+      <div style={{ position: "absolute", top: 10, right: 10 }}>
         <CopyBtn text={copySrc} t={t} />
       </div>
     </div>
@@ -420,6 +426,8 @@ const MessageItem = React.memo(function MessageItem(props: {
 export function ChatPage(props: {
   railWidth: number;
   onRailWidth: (w: number) => void;
+  /** ширина контента (окно − сайдбар), px */
+  widthPx: number;
   t: WaveTheme;
   onOpenSubagent: (id: string) => void;
   pendingSession: string | null;
@@ -445,6 +453,8 @@ export function ChatPage(props: {
   const [streaming, setStreaming] = useState(false);
   const sessionRef = useRef<AcpSession | null>(null);
   const startedRef = useRef(false);
+  /** id последней успешно открытой сессии — для авто-reconnect при обрыве WS */
+  const lastSidRef = useRef<string | null>(null);
 
   const makeSession = () =>
     new AcpSession({
@@ -462,6 +472,8 @@ export function ChatPage(props: {
       onUpdateMessage: (id, patch) =>
         setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, ...patch } : m))),
       onTodo: (items) => setTodos(items.length ? items : null),
+      onUsage: (u) =>
+        setCtx((c) => ({ ...c, tokens: u.used, limit: u.size ?? c.limit })),
       onReady: () => setStatus("ready"),
       onError: (e) => {
         setError(e);
@@ -470,16 +482,19 @@ export function ChatPage(props: {
     });
 
   const connect = useCallback(async () => {
-    sessionRef.current?.stop();
+    sessionRef.current?.stop(true);
     setError("");
     setStatus("starting");
     const s = makeSession();
     sessionRef.current = s;
     try {
       await s.start();
+      if (sessionRef.current === s) lastSidRef.current = s.id;
     } catch (e) {
-      setError(errText(e).slice(0, 200));
-      setStatus("error");
+      if (sessionRef.current === s) {
+        setError(errText(e).slice(0, 200));
+        setStatus("error");
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -489,7 +504,7 @@ export function ChatPage(props: {
     if (startedRef.current) return;
     startedRef.current = true;
     void connect();
-    return () => sessionRef.current?.stop();
+    return () => sessionRef.current?.stop(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -499,7 +514,7 @@ export function ChatPage(props: {
     const id = props.pendingSession;
     props.clearPending();
     const run = async () => {
-      sessionRef.current?.stop();
+      sessionRef.current?.disconnect(); // сервер живёт — новый старт мгновенный (reuse)
       setMessages([]);
       setTodos(null);
       setSubagents([]);
@@ -509,9 +524,12 @@ export function ChatPage(props: {
       sessionRef.current = s;
       try {
         await s.load(id);
+        if (sessionRef.current === s) lastSidRef.current = s.id;
       } catch (e) {
-        setError(`Не удалось открыть сессию: ${errText(e).slice(0, 160)}`);
-        setStatus("error");
+        if (sessionRef.current === s) {
+          setError(`Не удалось открыть сессию: ${errText(e).slice(0, 160)}`);
+          setStatus("error");
+        }
       }
     };
     void run();
@@ -553,8 +571,7 @@ export function ChatPage(props: {
     }
     const poll = () => {
       try {
-        const row = listSessions(false).find((r) => r.id === sid);
-        if (row) setCtx((c) => ({ ...c, tokens: row.total_tokens ?? 0 }));
+        // токены берём из usage_update (live); poll — только субагенты
         setSubagents(listSubagents(sid));
       } catch {
         /* тихо */
@@ -567,28 +584,64 @@ export function ChatPage(props: {
   }, [messages.length, status]);
 
   const compact = async () => {
-    if (!sessionRef.current || status !== "ready") return;
+    const s = sessionRef.current;
+    if (!s || status !== "ready") return;
     setStreaming(true);
     try {
-      await sessionRef.current.prompt("/compact");
+      await s.prompt("/compact");
     } catch (e) {
-      setError(`Сжатие: ${errText(e).slice(0, 120)}`);
+      if (sessionRef.current === s) {
+        const msg = errText(e);
+        if (/connection closed|stream is closed/i.test(msg) && lastSidRef.current) {
+          void reopenLast();
+        } else {
+          setError(`Сжатие: ${msg.slice(0, 120)}`);
+        }
+      }
     } finally {
-      setStreaming(false);
+      if (sessionRef.current === s) setStreaming(false);
     }
   };
 
   const send = async () => {
     const text = input.trim();
-    if (!text || !sessionRef.current || status !== "ready") return;
+    const s = sessionRef.current;
+    if (!text || !s || status !== "ready") return;
     setInput("");
     setStreaming(true);
     try {
-      await sessionRef.current.prompt(text);
+      await s.prompt(text);
     } catch (e) {
-      setError(`Ошибка промпта: ${errText(e).slice(0, 200)}`);
+      // чужая/мёртвая сессия после переключения — молчим (урок «ACP connection closed»)
+      if (sessionRef.current !== s) return;
+      const msg = errText(e);
+      if (/connection closed|stream is closed/i.test(msg) && lastSidRef.current) {
+        void reopenLast(); // обрыв WS → авто-reconnect с replay истории
+      } else {
+        setError(`Ошибка промпта: ${msg.slice(0, 200)}`);
+      }
     } finally {
-      setStreaming(false);
+      if (sessionRef.current === s) setStreaming(false);
+    }
+  };
+
+  /** Авто-reconnect: переоткрыть последнюю сессию (история replay'ится goose) */
+  const reopenLast = async () => {
+    const id = lastSidRef.current;
+    if (!id) return;
+    sessionRef.current?.disconnect();
+    setError("");
+    setStatus("starting");
+    const s = makeSession();
+    sessionRef.current = s;
+    try {
+      await s.load(id);
+      if (sessionRef.current === s) lastSidRef.current = s.id;
+    } catch (e) {
+      if (sessionRef.current === s) {
+        setError(`Переподключение: ${errText(e).slice(0, 160)}`);
+        setStatus("error");
+      }
     }
   };
 
@@ -612,8 +665,8 @@ export function ChatPage(props: {
   );
 
   return (
-    <div style={{display: "flex",  flexDirection: "row", height: "100%", flexGrow: 1, minWidth: 0 }}>
-      <div style={{display: "flex",  flexDirection: "column", flexGrow: 1, minWidth: 0, height: "100%" }}>
+    <div style={{display: "flex", width: props.widthPx, flexDirection: "row", height: "100%", minWidth: 0 }}>
+      <div style={{display: "flex", width: hasConversation ? Math.max(0, props.widthPx - props.railWidth) : props.widthPx, flexDirection: "column", flexShrink: 0, minWidth: 0, height: "100%", backgroundColor: t.bg }}>
         {/* topbar */}
         <div
           style={{display: "flex", 
@@ -625,7 +678,10 @@ export function ChatPage(props: {
             paddingTop: 10,
             paddingBottom: 10,
             borderBottomWidth: 1,
+            borderColor: t.border,
             backgroundColor: t.bg,
+            flexWrap: "wrap",
+            width: "100%",
           }}
         >
           <PantheonRoleBadge
@@ -648,8 +704,7 @@ export function ChatPage(props: {
               color: status === "ready" ? t.green : status === "error" ? t.error : t.faint,
       }}
           >
-            {statusLabel(status)}
-            {streaming ? " · ответ…" : ""}
+            {`${statusLabel(status)}${streaming ? " · ответ…" : ""}`}
           </text>
           <div style={{display: "flex", flexDirection: "column",  flexGrow: 1 }} />
           {hasConversation ? (
@@ -668,15 +723,15 @@ export function ChatPage(props: {
                 borderColor: t.border,
               }}
             >
-              <text style={{ fontSize: fs.xs2, color: t.text, fontWeight: 650 }}>
-                {fmtTokens(ctx.tokens)} ткн
+              <text style={{ fontSize: fs.xs2, color: t.text, fontWeight: 650, whiteSpace: "nowrap" }}>
+                {`${fmtTokens(ctx.tokens)} ткн`}
               </text>
               {ctx.limit ? (
-                <text style={{ fontSize: fs.xs2, color: t.dim }}>/ {fmtTokens(ctx.limit)}</text>
+                <text style={{ fontSize: fs.xs2, color: t.dim, whiteSpace: "nowrap" }}>{`/ ${fmtTokens(ctx.limit)}`}</text>
               ) : null}
               {ctx.threshold != null ? (
                 <text style={{ fontSize: fs.xs2, color: t.faint }}>
-                  · автосжатие {Math.round(ctx.threshold * 100)}%
+                  {`· автосжатие ${Math.round(ctx.threshold * 100)}%`}
                 </text>
               ) : null}
               <div
@@ -701,7 +756,7 @@ export function ChatPage(props: {
 
         {/* тело: welcome или виртуальный список */}
         {!hasConversation ? (
-          <div style={{display: "flex", flexDirection: "column",  flexGrow:1, justifyContent: "center", alignItems: "center", padding: sp[5] }}>
+          <div style={{display: "flex", width: "100%", flexDirection: "column", flexGrow:1, justifyContent: "center", alignItems: "center", padding: sp[5] }}>
             <div style={{display: "flex", flexDirection: "column",  alignItems: "center", gap: 6 }}>
               <Clock t={t} />
               {status === "error" ? (
@@ -717,7 +772,7 @@ export function ChatPage(props: {
                     alignItems: "center",
                   }}
                 >
-                  <text style={{ fontSize: fs.sm, color: t.text }}>⚠ {error}</text>
+                  <text style={{ fontSize: fs.sm, color: t.text, whiteSpace: "nowrap" }}>{`⚠ ${error}`}</text>
                   <div
                     onClick={() => void connect()}
                     style={{
@@ -744,7 +799,7 @@ export function ChatPage(props: {
             </div>
           </div>
         ) : (
-          <div style={{display: "flex",  flexDirection: "column", flexGrow: 1, minHeight: 0, padding: sp[5] }}>
+          <div style={{display: "flex", width: "100%", flexDirection: "column", flexGrow: 1, minHeight: 0, padding: sp[5] }}>
             {error ? (
               <div
                 style={{
@@ -756,7 +811,7 @@ export function ChatPage(props: {
                   marginBottom: sp[2],
                 }}
               >
-                <text style={{ fontSize: fs.sm, color: t.text }}>⚠ {error}</text>
+                <text style={{ fontSize: fs.sm, color: t.text, whiteSpace: "nowrap" }}>{`⚠ ${error}`}</text>
               </div>
             ) : null}
             <virtual-list
@@ -797,7 +852,8 @@ export function ChatPage(props: {
 
         {/* поле ввода */}
         <div
-          style={{display: "flex", 
+          style={{display: "flex",
+            width: "100%",
             flexDirection: "row",
             gap: sp[3],
             paddingLeft: 26,
@@ -807,32 +863,42 @@ export function ChatPage(props: {
             alignItems: "flex-end",
           }}
         >
-          <textarea
-            value={input}
-            placeholder="Сообщение… (Enter — отправить)"
-            minRows={1}
-            maxRows={8}
-            onChange={(e) => setInput(e.value ?? "")}
-            onSubmit={(e) => {
-              if (!e.modifiers?.shift) void send();
-            }}
-            style={{display: "flex", flexDirection: "column", 
+          <div
+            style={{
+              display: "flex",
               flexGrow: 1,
-              minHeight: 46,
-              maxHeight: 160,
-              fontSize: fs.base,
-              color: t.text,
-              backgroundColor: t.glass,
-              borderWidth: 1,
-              borderColor: t.border,
-              borderRadius: 24,
-              paddingLeft: 18,
-              paddingRight: 18,
-              paddingTop: 12,
-              paddingBottom: 12,
-              fontFamily: font,
+              flexShrink: 1,
+              minWidth: 0,
+              flexDirection: "column",
             }}
-          />
+          >
+            <textarea
+              value={input}
+              placeholder="Сообщение… (Enter — отправить)"
+              minRows={1}
+              maxRows={8}
+              onChange={(e) => setInput(e.value ?? "")}
+              onSubmit={(e) => {
+                if (!e.modifiers?.shift) void send();
+              }}
+              style={{
+                width: "100%",
+                minHeight: 46,
+                maxHeight: 160,
+                fontSize: fs.base,
+                color: t.text,
+                backgroundColor: t.glass,
+                borderWidth: 1,
+                borderColor: t.border,
+                borderRadius: 24,
+                paddingLeft: 18,
+                paddingRight: 18,
+                paddingTop: 12,
+                paddingBottom: 12,
+                fontFamily: font,
+              }}
+            />
+          </div>
           <div
             onClick={() => void send()}
             style={{ display: "flex", flexDirection: "column", 
@@ -861,9 +927,10 @@ export function ChatPage(props: {
       </div>
 
       {/* правая панель: задачи + субагенты */}
+      {hasConversation ? (
       <div
         style={{
-          display: hasConversation ? "flex" : "none",
+          display: "flex",
           width: props.railWidth,
           minWidth: props.railWidth,
           borderLeftWidth: 1,
@@ -968,7 +1035,7 @@ export function ChatPage(props: {
             }}
           >
             <text style={{ fontSize: fs.xs2, color: t.faint, fontWeight: 650, marginBottom: sp[3] }}>
-              СУБАГЕНТЫ{running ? ` · ${running} активн.` : ""}
+              {`СУБАГЕНТЫ${running ? ` · ${running} активн.` : ""}`}
             </text>
             <div style={{display: "flex",  flexDirection: "column", gap: 2 }}>
               {subagents.map((s) => (
@@ -998,7 +1065,7 @@ export function ChatPage(props: {
                     </text>
                   </div>
                   <text style={{ fontSize: fs.xs, color: t.faint }}>
-                    {s.tokens.toLocaleString("ru")} ткн
+                    {`${s.tokens.toLocaleString("ru")} ткн`}
                   </text>
                 </div>
               ))}
@@ -1006,6 +1073,7 @@ export function ChatPage(props: {
           </div>
         ) : null}
       </div>
+      ) : null}
     </div>
   );
 }

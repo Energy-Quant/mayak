@@ -51,14 +51,14 @@ export default function PantheonRoleBadge(props: {
           backgroundColor: dot,
         }}
       />
-      <text style={{ fontSize: props.fontSize, color: c.text }}>
-        {meta.icon} {meta.label}
+      <text style={{ fontSize: props.fontSize, color: c.text, whiteSpace: "nowrap" }}>
+        {`${meta.icon} ${meta.label}`}
       </text>
       {metaLine ? (
-        <text style={{ fontSize: props.fontSize - 1.5, color: c.dim }}>{metaLine}</text>
+        <text style={{ fontSize: props.fontSize - 1.5, color: c.dim, whiteSpace: "nowrap" }}>{metaLine}</text>
       ) : null}
       {fallbackFired ? (
-        <text style={{ fontSize: props.fontSize - 1.5, color: c.gold }}>⚡ {fallbackFired}</text>
+        <text style={{ fontSize: props.fontSize - 1.5, color: c.gold, whiteSpace: "nowrap" }}>{`⚡ ${fallbackFired}`}</text>
       ) : null}
     </div>
   );

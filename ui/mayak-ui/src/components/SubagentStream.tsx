@@ -8,7 +8,7 @@ import { listSubagentMessages, type SubagentMessage, type ContentBlock } from ".
 import { copyText } from "../api/clipboard";
 import { ToolBody, type ToolTheme } from "./toolRender";
 import { fs, type WaveTheme } from "../tokens";
-import { Markdown } from "./md";
+import { Markdown, italicize } from "./md";
 
 function roleLabel(role: string, isFirstUser: boolean): string {
   if (role === "user") return isFirstUser ? "Задача" : "Ход";
@@ -117,7 +117,7 @@ const ThinkingRow = memo(function ThinkingRow(props: { text: string; t: WaveThem
           {open ? "▴ свернуть" : "▸ показать"}
         </text>
       </div>
-      {open ? <Markdown source={props.text} t={t} /> : null}
+      {open ? <Markdown source={italicize(props.text)} t={t} /> : null}
     </div>
   );
 });
@@ -269,7 +269,7 @@ export default function SubagentStream(props: { sessionId: string; t: WaveTheme 
     return (
       <div style={{ display: "flex",  flexDirection:"column", padding: 16, gap: 8 }}>
         {err ? (
-          <text style={{ fontSize: fs.sm, color: t.error }}>⚠ {err}</text>
+          <text style={{ fontSize: fs.sm, color: t.error, whiteSpace: "nowrap" }}>{`⚠ ${err}`}</text>
         ) : (
           <text style={{ fontSize: fs.sm, color: t.faint }}>
             {err ? `⚠ ${err}` : "Ждём сообщения субагента…"}

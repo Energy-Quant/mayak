@@ -99,6 +99,7 @@ export default function Sidebar(props: {
         flexDirection: "column",
         backgroundColor: t.bg,
         borderRightWidth: 1,
+        borderColor: t.borderStrong,
         paddingTop: sp[3],
         paddingBottom: sp[3],
         paddingLeft: 10,

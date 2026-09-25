@@ -32,7 +32,7 @@ function Seg(props: { label: string; w?: UsageWindow; t: WaveTheme }) {
     <div
       style={{display: "flex",  flexDirection: "row", alignItems: "center", gap: 8, flexGrow: 1 }}
     >
-      <text style={{ fontSize: fs.xs2, color: t.dim, width: 46 }}>{props.label}</text>
+      <text style={{ fontSize: fs.xs2, color: t.dim, width: 46, whiteSpace: "nowrap" }}>{props.label}</text>
       <div
         style={{display: "flex", flexDirection: "column", 
           flexGrow: 1,
@@ -47,13 +47,14 @@ function Seg(props: { label: string; w?: UsageWindow; t: WaveTheme }) {
       <text
         style={{
           fontSize: fs.xs2,
-          width: 36,
+          width: 40,
           textAlign: "right",
           fontWeight: 650,
+          whiteSpace: "nowrap",
           color: lvl === "crit" ? t.error : t.text,
         }}
       >
-        {p}%
+        {`${p}%`}
       </text>
     </div>
   );
@@ -107,7 +108,8 @@ export default function UsageBar(props: { t: WaveTheme; refreshKey?: number }) {
 
   return (
     <div
-      style={{display: "flex", 
+      style={{display: "flex",
+        width: "100%",
         flexDirection: "row",
         gap: 18,
         paddingLeft: 26,

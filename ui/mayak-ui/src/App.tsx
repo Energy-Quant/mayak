@@ -4,6 +4,7 @@
  * Тема (mode) живёт здесь и спускается пропсом t.
  */
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useWindowSize } from "@gpuix/react";
 import Sidebar, { type Page } from "./components/Sidebar";
 import SubagentStream from "./components/SubagentStream";
 import SplitPane from "./components/SplitPane";
@@ -24,6 +25,7 @@ function StubPage(props: { title: string; t: WaveTheme }) {
 }
 
 export default function App() {
+  const win = useWindowSize();
   const [mode, setMode] = useState<ThemeMode>(() => {
     const saved = globalThis.localStorage?.getItem("mayak-theme");
     if (saved === "light" || saved === "dark") return saved;
@@ -79,6 +81,7 @@ export default function App() {
     case "chat":
       content = (
         <ChatPage
+          widthPx={Math.max(0, win.width - sidebarW)}
           railWidth={railW}
           onRailWidth={setRail}
           t={t}
@@ -115,7 +118,7 @@ export default function App() {
   }
 
   return (
-    <div style={{display: "flex",  height: "100%", backgroundColor: t.bg, flexDirection: "row", flexGrow: 1 }}>
+    <div style={{display: "flex", width: win.width || undefined, height: win.height || undefined, backgroundColor: t.bg, flexDirection: "row", flexShrink: 1 }}>
       <Sidebar
         page={page}
         onNavigate={setPage}
@@ -125,6 +128,7 @@ export default function App() {
         t={t}
       />
       <SplitPane
+        widthPx={Math.max(0, win.width - sidebarW)}
         left={content}
         right={
           subagentSession ? (
@@ -171,8 +175,8 @@ export default function App() {
                     backgroundColor: t.green,
                   }}
        />
-                <text style={{display: "flex", flexDirection: "column",  fontSize: 13.5, color: t.text, flexGrow: 1 }}>
-                  Субагент · session {subagentSession.slice(0, 20)}
+                <text style={{ fontSize: 13.5, color: t.text, flexGrow: 1, whiteSpace: "nowrap" }}>
+                  {`Субагент · session ${subagentSession.slice(0, 20)}`}
                 </text>
                 <text style={{ fontSize: 11.5, color: t.faint }}>live-стрим</text>
               </div>
