@@ -33,3 +33,30 @@ export async function readFileBytes(path: string): Promise<number[]> {
   const buf = await Bun.file(path).arrayBuffer();
   return Array.from(new Uint8Array(buf));
 }
+
+/** Жатие ≤1024px → JPEG q85 через ImageMagick (паритет compressImageDataUrl); нет magick → оригинал */
+export function compressImageBytes(
+  bytes: Uint8Array,
+  mime: string,
+): { bytes: Uint8Array; mimeType: string } {
+  if (!/^image\/(png|jpe?g|webp|gif|bmp|avif)$/.test(mime)) return { bytes, mimeType: mime };
+  try {
+    const r = Bun.spawnSync(["magick", "-", "-resize", "1024x1024>", "-quality", "85", "jpeg:-"], {
+      stdin: bytes,
+    });
+    if (r.exitCode === 0 && r.stdout.length > 0) {
+      return { bytes: new Uint8Array(r.stdout), mimeType: "image/jpeg" };
+    }
+  } catch {
+    /* нет ImageMagick */
+  }
+  return { bytes, mimeType: mime };
+}
+
+export function toBase64(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString("base64");
+}
+
+export function toDataUrl(bytes: Uint8Array, mime: string): string {
+  return `data:${mime};base64,${toBase64(bytes)}`;
+}

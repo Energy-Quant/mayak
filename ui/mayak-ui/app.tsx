@@ -9,5 +9,5 @@ render(<App />, {
   title: "Маяк",
   width: 1280,
   height: 840,
-  onKeyDown: (e) => winKeys.handler?.(e),
+  onKeyDown: (e) => { winKeys.chat?.(e); winKeys.handler?.(e); },
 });

@@ -5,10 +5,13 @@
  * Вложения (Ctrl+V/DnD/picker) — шаг 8; события заменены на пропсы App.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useGpuix } from "@gpuix/react";
 import {
   AcpSession,
   listSubagents,
   errText,
+  dataUrlToImage,
+  type Attachment,
   type ChatMessage,
   type SubagentRow,
   type TodoItem,
@@ -16,7 +19,15 @@ import {
 import { getConfigSummary, getConfigLimits } from "../api/config";
 import { getProviderCatalog } from "../api/catalog";
 import { listSessions } from "../api/db";
-import { copyText } from "../api/clipboard";
+import { clipboardImage, copyText } from "../api/clipboard";
+import {
+  compressImageBytes,
+  readFileBytes,
+  stageAttachment,
+  toBase64,
+  toDataUrl,
+} from "../api/attachments";
+import { winKeys } from "../windowKeys";
 import PantheonRoleBadge from "./PantheonRoleBadge";
 import { Icon } from "./Icon";
 import { useDragWidth } from "../useDragWidth";
@@ -451,6 +462,9 @@ export function ChatPage(props: {
   const [status, setStatus] = useState<"idle" | "starting" | "ready" | "error">("idle");
   const [error, setError] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const { renderer } = useGpuix();
+  const MAX_ATTACH = 8;
   const sessionRef = useRef<AcpSession | null>(null);
   const startedRef = useRef(false);
   /** id последней успешно открытой сессии — для авто-reconnect при обрыве WS */
@@ -583,6 +597,85 @@ export function ChatPage(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, status]);
 
+  /** Ингест OS-путей (drop / file picker): картинки → сжатие+staging, документы → путь */
+  const ingestPaths = async (paths: string[]) => {
+    for (const p of paths) {
+      const name = p.split("/").pop() || "file";
+      const isImg = /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(p);
+      try {
+        const bytes = Uint8Array.from(await readFileBytes(p));
+        if (isImg) {
+          const ext = name.split(".").pop()?.toLowerCase() ?? "png";
+          const mime = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
+          const cmp = compressImageBytes(bytes, mime);
+          const staged = stageAttachment(name, bytes);
+          const dataUrl = toDataUrl(cmp.bytes, cmp.mimeType);
+          const img = dataUrlToImage(dataUrl);
+          setAttachments((a) =>
+            [
+              ...a,
+              {
+                id: crypto.randomUUID(),
+                name,
+                kind: "image" as const,
+                dataUrl,
+                data: img?.data ?? toBase64(cmp.bytes),
+                mimeType: img?.mimeType ?? cmp.mimeType,
+                path: staged,
+              },
+            ].slice(0, MAX_ATTACH),
+          );
+        } else {
+          setAttachments((a) =>
+            [...a, { id: crypto.randomUUID(), name, kind: "file" as const, path: p }].slice(0, MAX_ATTACH),
+          );
+        }
+      } catch (e) {
+        setAttachments((a) =>
+          [
+            ...a,
+            { id: crypto.randomUUID(), name, kind: "file" as const, error: errText(e).slice(0, 80) },
+          ].slice(0, MAX_ATTACH),
+        );
+      }
+    }
+  };
+
+  // Ctrl+V → нативный wl-paste (паритет keydown-пути legacy)
+  useEffect(() => {
+    winKeys.chat = (e) => {
+      if (e.key !== "v" || !e.modifiers?.ctrl || e.modifiers?.shift || e.modifiers?.alt) return;
+      try {
+        const ci = clipboardImage();
+        if (ci && ci.data?.length) {
+          const ext = ci.mime.split("/")[1] || "png";
+          const raw = Uint8Array.from(ci.data);
+          const cmp = compressImageBytes(raw, ci.mime);
+          const staged = stageAttachment(`clipboard.${ext}`, raw);
+          setAttachments((a) =>
+            [
+              ...a,
+              {
+                id: crypto.randomUUID(),
+                name: `clipboard.${ext}`,
+                kind: "image" as const,
+                dataUrl: toDataUrl(cmp.bytes, cmp.mimeType),
+                data: toBase64(cmp.bytes),
+                mimeType: cmp.mimeType,
+                path: staged,
+              },
+            ].slice(0, 8),
+          );
+        }
+      } catch {
+        /* нет wl-clipboard / не картинка */
+      }
+    };
+    return () => {
+      winKeys.chat = null;
+    };
+  }, []);
+
   const compact = async () => {
     const s = sessionRef.current;
     if (!s || status !== "ready") return;
@@ -606,11 +699,17 @@ export function ChatPage(props: {
   const send = async () => {
     const text = input.trim();
     const s = sessionRef.current;
-    if (!text || !s || status !== "ready") return;
+    const ready = attachments.filter((a) => !a.error && (a.kind === "image" ? a.data : a.path));
+    if ((!text && ready.length === 0) || !s || status !== "ready") return;
     setInput("");
+    const images = ready
+      .filter((a) => a.kind === "image" && a.data && a.mimeType)
+      .map((a) => ({ data: a.data as string, mimeType: a.mimeType as string }));
+    const paths = ready.filter((a) => a.path).map((a) => a.path as string);
+    setAttachments([]);
     setStreaming(true);
     try {
-      await s.prompt(text);
+      await s.prompt(text, images.length ? images : undefined, paths.length ? paths : undefined);
     } catch (e) {
       // чужая/мёртвая сессия после переключения — молчим (урок «ACP connection closed»)
       if (sessionRef.current !== s) return;
@@ -665,7 +764,12 @@ export function ChatPage(props: {
   );
 
   return (
-    <div style={{display: "flex", width: props.widthPx, flexDirection: "row", height: "100%", minWidth: 0 }}>
+    <div
+      style={{display: "flex", width: props.widthPx, flexDirection: "row", height: "100%", minWidth: 0 }}
+      onFileDrop={(ev) => {
+        if (ev.paths && ev.paths.length) void ingestPaths(ev.paths);
+      }}
+    >
       <div style={{display: "flex", width: hasConversation ? Math.max(0, props.widthPx - props.railWidth) : props.widthPx, flexDirection: "column", flexShrink: 0, minWidth: 0, height: "100%", backgroundColor: t.bg }}>
         {/* topbar */}
         <div
@@ -850,6 +954,60 @@ export function ChatPage(props: {
           </div>
         )}
 
+        {/* вложения */}
+        {attachments.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "wrap",
+              gap: 8,
+              paddingLeft: 26,
+              paddingRight: 26,
+              paddingBottom: 6,
+            }}
+          >
+            {attachments.map((a) => (
+              <div
+                key={a.id}
+                style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: 6,
+                  borderRadius: 13,
+                  backgroundColor: t.glass,
+                  borderWidth: 1,
+                  borderColor: a.error ? t.error : t.border,
+                }}
+              >
+                {a.kind === "image" && a.dataUrl ? (
+                  <img src={a.dataUrl} objectFit="cover" style={{ width: 56, height: 56, borderRadius: 8 }} />
+                ) : (
+                  <text style={{ fontSize: 22, color: t.dim, whiteSpace: "nowrap" }}>📄</text>
+                )}
+                <text
+                  style={{
+                    fontSize: fs.sm,
+                    color: a.error ? t.error : t.dim,
+                    whiteSpace: "nowrap",
+                    maxWidth: 170,
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {a.error || a.name}
+                </text>
+                <div
+                  onClick={() => setAttachments((xs) => xs.filter((y) => y.id !== a.id))}
+                  style={{ display: "flex", padding: 4, borderRadius: 6, cursor: "pointer" }}
+                >
+                  <text style={{ fontSize: fs.sm, color: t.faint }}>×</text>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {/* поле ввода */}
         <div
           style={{display: "flex",
@@ -863,6 +1021,32 @@ export function ChatPage(props: {
             alignItems: "flex-end",
           }}
         >
+          <div
+            onClick={() => {
+              const r = renderer as unknown as {
+                promptForPaths?: (o?: { multiple?: boolean }) => Promise<string[] | null>;
+              } | null;
+              void r?.promptForPaths?.({ multiple: true })?.then((ps) => {
+                if (ps && ps.length) void ingestPaths(ps);
+              });
+            }}
+            style={{
+              display: "flex",
+              width: 44,
+              height: 46,
+              flexShrink: 0,
+              borderRadius: 23,
+              justifyContent: "center",
+              alignItems: "center",
+              backgroundColor: t.glass,
+              borderWidth: 1,
+              borderColor: t.border,
+              cursor: status === "ready" ? "pointer" : "default",
+              opacity: status === "ready" ? 1 : 0.5,
+            }}
+          >
+            <Icon name="paperclip" size={16} color={t.dim} />
+          </div>
           <div
             style={{
               display: "flex",
