@@ -13,7 +13,7 @@
 import { client, CLIENT_METHODS } from "@agentclientprotocol/sdk";
 import { createWebSocketStream } from "@agentclientprotocol/sdk/experimental/ws-client";
 import { start as startServer, stop as stopServer } from "./api/gooseServer";
-import { listSessions } from "./api/db";
+import { listSubagentChildren } from "./api/db";
 
 /** Вложение чата: картинка уходит ACP image-блоком; документ staged-ится в tmp и идёт путём в тексте */
 export interface Attachment {
@@ -383,9 +383,10 @@ export interface SubagentRow {
 /** Субагенты ИЕРАРХИЧЕСКИ: только дети parentId. Без parentId — пусто (иерархия, не плоский список). */
 export const listSubagents = (parentId?: string | null): SubagentRow[] => {
   if (!parentId) return [];
-  const rows = listSessions(false);
+  // прямой запрос детей (listSubagentChildren), а НЕ filter по listSessions:
+  // тот обрезается LIMIT 100 и теряет детей старых сессий
+  const rows = listSubagentChildren(parentId);
   return rows
-    .filter((r) => r.session_type === "sub_agent" && r.parent_session_id === parentId)
     .slice(0, 12)
     .map((r) => ({
       id: r.id,

@@ -180,12 +180,17 @@ export default function Sidebar(props: {
               }}
             />
             <text
-              style={{display: "flex", flexDirection: "column", 
+              style={{display: "flex", flexDirection: "column",
                 fontSize: fs.sm,
                 color: t.dim,
                 flexGrow: 1,
+                // без minWidth:0 + overflow text не сжимается в flex и вылезает
+                // поверх paddingRight до самого бортика сайдбара
+                minWidth: 0,
+                overflow: "hidden",
                 whiteSpace: "nowrap",
                 textOverflow: "ellipsis",
+                paddingRight: 4,
               }}
             >
               {s.title}

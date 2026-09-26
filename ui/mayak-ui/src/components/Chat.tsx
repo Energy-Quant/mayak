@@ -475,6 +475,17 @@ export function ChatPage(props: {
   const startedRef = useRef(false);
   /** id последней успешно открытой сессии — для авто-reconnect при обрыве WS */
   const lastSidRef = useRef<string | null>(null);
+  /**
+   * sid в React-state: смена сессии должна ПЕРЕЗАПУСТИТЬ poll-эффект субагентов.
+   * lastSidRef (ref) ререндер не даёт — эффект зависел от messages/status и мог
+   * остаться с опросом старой/пустой сессии («окно субагентов исчезло»).
+   */
+  const [sid, setSid] = useState<string | null>(null);
+  const applySid = (id: string | null) => {
+    setLastSid(id);
+    lastSidRef.current = id;
+    setSid(id);
+  };
 
   const makeSession = () =>
     new AcpSession({
@@ -515,6 +526,9 @@ export function ChatPage(props: {
         } catch {
           // sid протух — fallback: новая сессия (session/new)
           s.stop(false);
+          // ГОНКА: пока грузилась lastSid, pendingSession мог уже установить
+          // свою сессию в sessionRef — не перетираем её пустой session/new
+          if (sessionRef.current !== s) return;
           const s2 = makeSession();
           sessionRef.current = s2;
           active = s2;
@@ -524,8 +538,7 @@ export function ChatPage(props: {
         await s.start();
       }
       if (sessionRef.current === active && active.id) {
-        setLastSid(active.id);
-        lastSidRef.current = active.id;
+        applySid(active.id);
         props.onSessionChange?.(active.id);
       }
     } catch (e) {
@@ -563,8 +576,8 @@ export function ChatPage(props: {
       try {
         await s.load(id);
         if (sessionRef.current === s && s.id) {
-          setLastSid(s.id);
-          lastSidRef.current = s.id;
+          applySid(s.id);
+          props.onSessionChange?.(s.id);
         }
       } catch {
         // sid протух — fallback: новая сессия (session/new), как в connect()
@@ -574,8 +587,8 @@ export function ChatPage(props: {
         try {
           await s2.start();
           if (sessionRef.current === s2 && s2.id) {
-            setLastSid(s2.id);
-            lastSidRef.current = s2.id;
+            applySid(s2.id);
+            props.onSessionChange?.(s2.id);
           }
         } catch (e2) {
           if (sessionRef.current === s2) {
@@ -615,8 +628,7 @@ export function ChatPage(props: {
     setError("");
     setStreaming(false);
     setAttachments([]);
-    setLastSid(null);
-    lastSidRef.current = null;
+    applySid(null);
     setStatus("starting");
     const s = makeSession();
     sessionRef.current = s;
@@ -624,8 +636,7 @@ export function ChatPage(props: {
       try {
         await s.start();
         if (sessionRef.current === s && s.id) {
-          setLastSid(s.id);
-          lastSidRef.current = s.id;
+          applySid(s.id);
           props.onSessionChange?.(s.id);
         }
       } catch (e) {
@@ -663,9 +674,10 @@ export function ChatPage(props: {
     void load();
   }, []);
 
-  // токены текущей сессии + субагенты: poll
+  // субагенты: poll по sid (React-state). Зависимость от messages/status давала
+  // опрос ДО готовности sessionRef (sid=null → пусто) и не перезапускала интервал
+  // при смене сессии → «окно субагентов исчезало после переключения».
   useEffect(() => {
-    const sid = sessionRef.current?.id;
     if (!sid) {
       setCtx((c) => ({ ...c, tokens: 0 }));
       setSubagents([]);
@@ -680,10 +692,10 @@ export function ChatPage(props: {
       }
     };
     poll();
-    const iv = setInterval(poll, 5000);
+    const iv = setInterval(poll, 3000);
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.length, status]);
+  }, [sid]);
 
   /** Ингест OS-путей (drop / file picker): картинки → сжатие+staging, документы → путь */
   const ingestPaths = async (paths: string[]) => {
@@ -829,8 +841,7 @@ export function ChatPage(props: {
     try {
       await s.load(id);
       if (sessionRef.current === s && s.id) {
-        setLastSid(s.id);
-        lastSidRef.current = s.id;
+        applySid(s.id);
       }
     } catch (e) {
       if (sessionRef.current === s) {

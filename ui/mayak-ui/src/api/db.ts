@@ -60,6 +60,59 @@ export interface SessionRow {
   running: boolean;
 }
 
+/**
+ * Дети сессии (sub_agent) — прямой запрос по parent_session_id.
+ * НЕ через listSessions: тот режет LIMIT 100 по updated_at и теряет детей
+ * старых сессий (родитель в топ-100, дети — уже нет).
+ */
+export function listSubagentChildren(parentId: string): SessionRow[] {
+  let running = new Set<string>();
+  try {
+    const conn = openPantheon();
+    const rs = conn
+      .query("SELECT session_id FROM runs WHERE status='running'")
+      .all() as { session_id: string }[];
+    running = new Set(rs.map((r) => r.session_id));
+    conn.close();
+  } catch {
+    /* pantheon.db может не существовать */
+  }
+
+  const conn = openSessions();
+  const rows = conn
+    .query(
+      `SELECT id, name, description, session_type, updated_at, total_tokens, parent_session_id
+       FROM sessions
+       WHERE archived_at IS NULL AND parent_session_id = ? AND session_type = 'sub_agent'
+       ORDER BY updated_at DESC LIMIT 30`,
+    )
+    .all(parentId) as {
+    id: string;
+    name: string;
+    description: string;
+    session_type: string;
+    updated_at: string;
+    total_tokens: number | null;
+    parent_session_id: string | null;
+  }[];
+  conn.close();
+
+  return rows.map((r) => ({
+    id: r.id,
+    title:
+      r.name === ""
+        ? r.description === ""
+          ? "Без названия"
+          : [...r.description].slice(0, 60).join("")
+        : r.name,
+    session_type: r.session_type,
+    parent_session_id: r.parent_session_id,
+    updated_at: r.updated_at,
+    total_tokens: r.total_tokens ?? 0,
+    running: running.has(r.id),
+  }));
+}
+
 /** История сессий (sessions.db readonly) + running-флаг из pantheon.db */
 export function listSessions(onlyRunning = false): SessionRow[] {
   let running = new Set<string>();

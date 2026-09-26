@@ -41,7 +41,16 @@ export function UserText(props: { text: string; t: WaveTheme; fontSize: number }
   return (
     <div style={{display: "flex",  flexDirection: "column", minWidth: 0 }}>
       {lines.map((l, i) => (
-        <text key={i} style={{ fontSize: props.fontSize, color: props.t.text, lineHeight: 1.55 }}>
+        <text
+          key={i}
+          style={{
+            fontSize: props.fontSize,
+            color: props.t.text,
+            // GPUIX: lineHeight — ПИКСЕЛИ (renderer.js: fs13 → lh20), не CSS-множитель!
+            // 1.55 (как в CSS) = 1.55px → строки схлопываются и слипаются в одну
+            lineHeight: Math.round(props.fontSize * 1.55),
+          }}
+        >
           {l === "" ? " " : l}
         </text>
       ))}
