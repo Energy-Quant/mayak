@@ -836,6 +836,10 @@ export function ChatPage(props: {
     sessionRef.current?.disconnect();
     setError("");
     setStatus("starting");
+    // история replay'ится заново через session/load — старую чистим, иначе дубли
+    setMessages([]);
+    setTodos(null);
+    setSubagents([]);
     const s = makeSession();
     sessionRef.current = s;
     try {

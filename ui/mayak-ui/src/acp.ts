@@ -179,8 +179,13 @@ export class AcpSession {
         sessionId: loadId,
         cwd,
         mcpServers: [],
-      } as never)) as { sessionId: string };
-      this.sessionId = loaded.sessionId;
+      } as never)) as { sessionId?: string };
+      // ACP session/load НЕ возвращает sessionId (ключи: modes/configOptions/_meta —
+      // проверено сырого против goose). Раньше loaded.sessionId = undefined →
+      // sessionId=null → prompt() бросал «сессия не открыта» (Сжатие/отправка в
+      // старых чатах падали), applySid пропускался → sid не менялся → poll субагентов
+      // опрашивал чужую сессию и панель исчезала. Берём запрошенный id.
+      this.sessionId = loaded?.sessionId ?? loadId;
     } else {
       const created = (await this.connection.agent.request("session/new", {
         cwd,
@@ -284,8 +289,16 @@ export class AcpSession {
         if (text) this.handlers.onMessage({ id, role: "thinking", text });
         break;
       }
-      case "user_message_chunk":
+      case "user_message_chunk": {
+        // История: goose replay'ит сообщения пользователя ТОЛЬКО этим типом —
+        // без обработки «мои сообщения» исчезали после переключения чата/рестарта.
+        // В живую goose НЕ шлёт user_message_chunk (проверено: локальный echo в
+        // prompt() остаётся единственным источником) — дублей не будет.
+        const uc = up.content;
+        const utext = typeof uc === "object" && uc ? String(uc.text ?? "") : String(uc ?? "");
+        if (utext) this.handlers.onMessage({ id: String(up.messageId ?? id), role: "user", text: utext });
         break;
+      }
       case "usage_update": {
         const used = typeof up.used === "number" ? up.used : null;
         const size = typeof up.size === "number" ? up.size : undefined;
