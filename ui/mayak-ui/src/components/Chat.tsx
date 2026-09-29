@@ -569,6 +569,7 @@ export function ChatPage(props: {
       setMessages([]);
       setTodos(null);
       setSubagents([]);
+      applySid(null); // гасим poll ДО async-load: старый интервал успевал залить субагентов прошлой сессии
       setError("");
       setStatus("starting");
       const s = makeSession();
