@@ -7,6 +7,7 @@ import { Database } from "bun:sqlite";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { log, logged } from "../logger";
 
 export const pantheonDbPath = () => join(homedir(), ".local/share/goose/pantheon.db");
 const sessionsDbPath = () => join(homedir(), ".local/share/goose/sessions/sessions.db");
@@ -74,8 +75,8 @@ export function listSubagentChildren(parentId: string): SessionRow[] {
       .all() as { session_id: string }[];
     running = new Set(rs.map((r) => r.session_id));
     conn.close();
-  } catch {
-    /* pantheon.db может не существовать */
+  } catch (e) {
+    log.fail("db.running-flags", e);
   }
 
   const conn = openSessions();
@@ -123,8 +124,8 @@ export function listSessions(onlyRunning = false): SessionRow[] {
       .all() as { session_id: string }[];
     running = new Set(rs.map((r) => r.session_id));
     conn.close();
-  } catch {
-    /* pantheon.db может не существовать — running пуст */
+  } catch (e) {
+    log.fail("db.running-flags", e);
   }
 
   const conn = openSessions();
@@ -176,8 +177,8 @@ export function kvSet(key: string, value: string): void {
        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
     ).run(key, value);
     conn.close();
-  } catch {
-    /* аудит не должен ронять операцию */
+  } catch (e) {
+    log.fail("db.kvSet", e); // аудит не должен ронять операцию
   }
 }
 
@@ -263,6 +264,8 @@ export function contentBlocks(raw: string): ContentBlock[] {
   try {
     parsed = JSON.parse(raw);
   } catch {
+    // не-JSON контент — норма для plain text, не ошибка
+    log.debug("db.contentBlocks.nonjson", `len=${raw.length}`);
     const t = raw.trim();
     if (t === "" || isNoise(t)) return [];
     return [{ kind: "text", text: clip(t, 600) }];

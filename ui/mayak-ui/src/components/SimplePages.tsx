@@ -9,6 +9,7 @@ import { listRecipes, type RecipeRow } from "../api/config";
 import { copyText } from "../api/clipboard";
 import { Icon } from "./Icon";
 import { fs, type WaveTheme } from "../tokens";
+import { log } from "../logger";
 
 type SortKey = "title" | "session_type" | "total_tokens" | "updated_at" | "running";
 
@@ -73,7 +74,7 @@ export function History(props: { t: WaveTheme; onOpenSession?: (id: string) => v
   useEffect(() => {
     try {
       setRows(listSessions(onlyRunning));
-    } catch {
+    } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
       setRows([]);
     }
   }, [onlyRunning]);
@@ -335,7 +336,7 @@ export function Recipes(props: { t: WaveTheme }) {
           (a.title || a.file).localeCompare(b.title || b.file, "ru"),
         ),
       );
-    } catch {
+    } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
       setRows([]);
     }
   }, []);

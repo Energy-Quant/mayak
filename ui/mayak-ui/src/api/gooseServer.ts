@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { existsSync, mkdirSync, openSync } from "node:fs";
 import net from "node:net";
 import type { Subprocess } from "bun";
+import { log } from "../logger";
 
 export interface ServeInfo {
   port: number;
@@ -38,6 +39,7 @@ async function statusOk(port: number): Promise<boolean> {
     });
     return res.status === 200;
   } catch {
+    // statusOk: сайдкар ещё не слушает — не ошибка при readiness-poll
     return false;
   }
 }
@@ -65,6 +67,7 @@ function gooseBinary(): string {
 }
 
 export async function start(dir?: string, origins?: string[]): Promise<ServeInfo> {
+  log.start("gooseServer.start", `dir=${dir ?? "default"} origins=${(origins ?? baseOrigins()).length}`);
   // живой здоровый sidecar — переиспользуем (retry без спавна зомби)
   if (info) {
     const alive = child !== null && child.exitCode === null && child.signalCode === null;
@@ -72,8 +75,8 @@ export async function start(dir?: string, origins?: string[]): Promise<ServeInfo
     if (child) {
       try {
         child.kill();
-      } catch {
-        /* уже мёртв */
+      } catch (e) {
+        log.debug("gooseServer.reuse.kill", String(e));
       }
     }
     child = null;
@@ -131,6 +134,7 @@ export async function start(dir?: string, origins?: string[]): Promise<ServeInfo
         ws_url: `ws://127.0.0.1:${port}/acp?token=${secret}`,
         pid: child.pid,
       };
+      log.end("gooseServer.start", true, `port=${port} pid=${child.pid}`);
       return info;
     }
     await new Promise((r) => setTimeout(r, 500));
@@ -138,20 +142,23 @@ export async function start(dir?: string, origins?: string[]): Promise<ServeInfo
   // readiness не дождались — убить, чтобы не копить зомби
   try {
     child.kill();
-  } catch {
-    /* ignore */
+  } catch (e) {
+    log.debug("gooseServer.kill-after-timeout", String(e));
   }
   child = null;
+  log.end("gooseServer.start", false, "readiness timeout 25s");
   throw new Error("goose serve не поднялся за 25с");
 }
 
 export async function stop(): Promise<void> {
+  log.start("gooseServer.stop", `pid=${child?.pid ?? "-"}`);
   if (child) {
     try {
       child.kill();
       await child.exited;
-    } catch {
-      /* ignore */
+      log.end("gooseServer.stop", true);
+    } catch (e) {
+      log.fail("gooseServer.stop", e);
     }
   }
   child = null;

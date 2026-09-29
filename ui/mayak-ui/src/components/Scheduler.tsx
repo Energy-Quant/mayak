@@ -8,6 +8,7 @@ import { getScheduledJobs } from "../api/db";
 import { copyText } from "../api/clipboard";
 import { Icon } from "./Icon";
 import { fs, type WaveTheme } from "../tokens";
+import { log } from "../logger";
 
 /** Поля ScheduledJob (crates/goose/src/scheduler.rs) + устойчивость к альт. именам */
 interface Job {

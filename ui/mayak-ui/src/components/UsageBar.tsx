@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { getOpencodeUsage, type UsageReport, type UsageWindow } from "../api/limits";
 import { fs, type WaveTheme } from "../tokens";
+import { log } from "../logger";
 
 function level(p: number): "" | "warn" | "crit" {
   if (p >= 90) return "crit";

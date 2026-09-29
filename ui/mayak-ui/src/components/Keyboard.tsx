@@ -2,6 +2,7 @@
 // Данных о горячих клавишах в конфигах goose нет — таблицу не рисуем, пока она не появится.
 import { Icon } from "./Icon";
 import { fs, type WaveTheme } from "../tokens";
+import { log } from "../logger";
 
 export default function Keyboard(props: { t: WaveTheme }) {
   const t = props.t;

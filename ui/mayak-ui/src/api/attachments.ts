@@ -6,6 +6,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { log } from "../logger";
 
 const MAX_BYTES = 25 * 1024 * 1024;
 
@@ -47,7 +48,8 @@ export function compressImageBytes(
     if (r.exitCode === 0 && r.stdout.length > 0) {
       return { bytes: new Uint8Array(r.stdout), mimeType: "image/jpeg" };
     }
-  } catch {
+  } catch (e) {
+    log.fail("attachments.read", e);
     /* нет ImageMagick */
   }
   return { bytes, mimeType: mime };

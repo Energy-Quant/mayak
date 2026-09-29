@@ -17,6 +17,7 @@ import { Settings } from "./components/Settings";
 import ChainEditor from "./components/ChainEditor";
 import { autoTheme, dark, light, type ThemeMode, type WaveTheme } from "./tokens";
 import { winKeys } from "./windowKeys";
+import { log } from "./logger";
 
 export default function App() {
   const win = useWindowSize();

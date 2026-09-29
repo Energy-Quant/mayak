@@ -8,6 +8,7 @@ import { listStoredApps } from "../api/db";
 import { openApp } from "../api/config";
 import { Icon } from "./Icon";
 import { fs, type WaveTheme } from "../tokens";
+import { log } from "../logger";
 
 export function AppsPage(props: { t: WaveTheme }) {
   const t = props.t;

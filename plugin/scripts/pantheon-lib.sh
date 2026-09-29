@@ -6,6 +6,20 @@ PANTHEON_DB="${PANTHEON_DB:-$HOME/.local/share/goose/pantheon.db}"
 SESSIONS_DB="${SESSIONS_DB:-$HOME/.local/share/goose/sessions/sessions.db}"
 CACHE_DIR="${XDG_RUNTIME_DIR:-/tmp}/pantheon"
 
+# ── сквозное логирование (единый формат с mayak-ui logger.ts) ──────────────
+# 2026-09-29T21:40:12.345Z | ERROR | guard.sh | sid | event | detail
+PANTHEON_LOG="${PANTHEON_LOG:-$HOME/.local/state/pantheon/guard.log}"
+
+plog() { # plog <level> <module> <session_id> <event> [detail]
+  local level="$1" mod="$2" sid="$3" event="$4" detail="${5:-}"
+  local ts
+  ts=$(date -u +"%Y-%m-%dT%H:%M:%S.345Z" | sed 's/\.345Z/.'"$(date +%3N)"'Z/')
+  printf '%s | %-5s | %-22s | %-12s | %s | %s\n'     "$ts" "${level^^}" "$mod" "${sid:- -}" "$event" "$detail" >> "$PANTHEON_LOG" 2>/dev/null || true
+  case "$level" in
+    warn|error) printf '%s | %-5s | %-22s | %-12s | %s | %s\n'       "$ts" "${level^^}" "$mod" "${sid:- -}" "$event" "$detail" >&2 || true ;;
+  esac
+}
+
 pantheon_init_db() {
   mkdir -p "$(dirname "$PANTHEON_DB")" "$CACHE_DIR" 2>/dev/null
   if [ ! -f "$PANTHEON_DB" ]; then

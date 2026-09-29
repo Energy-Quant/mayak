@@ -9,6 +9,7 @@ import { copyText } from "../api/clipboard";
 import { ToolBody, type ToolTheme } from "./toolRender";
 import { fs, type WaveTheme } from "../tokens";
 import { Markdown, italicize } from "./md";
+import { log } from "../logger";
 
 function roleLabel(role: string, isFirstUser: boolean): string {
   if (role === "user") return isFirstUser ? "Задача" : "Ход";

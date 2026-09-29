@@ -12,6 +12,7 @@ import {
 } from "../api/config";
 import { Icon, type IconName } from "./Icon";
 import { dark, fs, type WaveTheme } from "../tokens";
+import { log } from "../logger";
 
 const DEFAULT_EXTS = [
   "analyze", "apps", "autovisualiser", "chatrecall", "chromedevtools",

@@ -4,6 +4,7 @@
  */
 import type { GpuixTheme } from "@gpuix/react";
 import { dark, font, type WaveTheme } from "../tokens";
+import { log } from "../logger";
 
 export function mdTheme(t: WaveTheme): GpuixTheme {
   return {

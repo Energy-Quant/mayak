@@ -13,6 +13,7 @@ import {
 } from "../api/db";
 import { copyText } from "../api/clipboard";
 import { fs, type WaveTheme } from "../tokens";
+import { log } from "../logger";
 
 const ROLE_EMOJI: Record<string, string> = {
   goose: "🪿",

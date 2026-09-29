@@ -9,6 +9,7 @@ payload="$(cat)"
 event=$(printf '%s' "$payload" | jq -r '.event // empty')
 session_id=$(printf '%s' "$payload" | jq -r '.session_id // empty')
 [ -z "$session_id" ] && exit 0
+plog "info" "pantheon-log.sh" "$session_id" "hook" "event=$event"
 
 pantheon_init_db
 

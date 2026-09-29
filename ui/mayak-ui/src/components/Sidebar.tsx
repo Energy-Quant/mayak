@@ -6,6 +6,7 @@ import { listSessions, type SessionRow } from "../api/db";
 import { Icon, type IconName } from "./Icon";
 import { useDragWidth } from "../useDragWidth";
 import { fs, sp, type WaveTheme } from "../tokens";
+import { log } from "../logger";
 
 export type Page =
   | "chat"
@@ -58,7 +59,7 @@ export default function Sidebar(props: {
               !(s.title === "New Chat" && s.total_tokens === 0),
           ),
         );
-      } catch {
+      } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
         setSessions([]);
       }
     };

@@ -5,6 +5,7 @@
 import type { ReactNode } from "react";
 import { parseTodos } from "../acp";
 import { fs } from "../tokens";
+import { log } from "../logger";
 
 const clip = (s: string, n: number) =>
   s.length <= n ? s : s.slice(0, n).replace(/\s+\S*$/, "") + "…";
@@ -18,7 +19,7 @@ function tryParse(raw: string): Record<string, unknown> | null {
   try {
     const p = JSON.parse(t);
     return p && typeof p === "object" && !Array.isArray(p) ? (p as Record<string, unknown>) : null;
-  } catch {
+  } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
     return null;
   }
 }

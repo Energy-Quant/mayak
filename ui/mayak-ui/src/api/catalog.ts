@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { parse as parseYaml } from "yaml";
 import { spawnSync } from "node:child_process";
+import { log } from "../logger";
 import type { ChainStep } from "./config";
 
 export interface CatalogModel {
@@ -30,8 +31,8 @@ function loadContextTruth(): Map<string, number> {
       const ctx = m.context_limit ?? m.context;
       if (typeof ctx === "number") out.set(id, ctx);
     }
-  } catch {
-    /* файла может не быть */
+  } catch (e) {
+    log.debug("catalog.loadContextTruth", e instanceof Error ? e.message : String(e));
   }
   return out;
 }
@@ -54,8 +55,8 @@ export function opencodeApiKey(): string | null {
         if (v) return v;
       }
     }
-  } catch {
-    /* нет secrets.yaml */
+  } catch (e) {
+    log.debug("catalog.secrets.yaml", e instanceof Error ? e.message : String(e));
   }
   try {
     const o = spawnSync("secret-tool", ["search", "--all", "service", "goose"], { encoding: "utf8" });
@@ -66,8 +67,8 @@ export function opencodeApiKey(): string | null {
         if (typeof j.OPENCODE_API_KEY === "string" && j.OPENCODE_API_KEY) return j.OPENCODE_API_KEY;
       }
     }
-  } catch {
-    /* нет keyring */
+  } catch (e) {
+    log.debug("catalog.secrets.keyring", e instanceof Error ? e.message : String(e));
   }
   return null;
 }

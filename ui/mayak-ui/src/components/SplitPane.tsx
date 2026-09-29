@@ -5,6 +5,7 @@
  */
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useWindowSize, type EventPayload } from "@gpuix/react";
+import { log } from "../logger";
 
 export default function SplitPane(props: {
   left: ReactNode;

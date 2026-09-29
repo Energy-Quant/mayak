@@ -15,11 +15,13 @@ tool=$(printf '%s' "$payload" | jq -r '.tool_name // empty')
 [ -z "$session_id" ] && exit 0
 
 role=$(resolve_role "$session_id")
+plog "debug" "guard.sh" "$session_id" "check" "tool=$tool role=$role"
 case "$role" in
   goose|adhoc) exit 0 ;;
 esac
 
 block() { # block <reason> — блокирующее решение через stdout JSON
+  plog "warn" "guard.sh" "$session_id" "blocked" "tool=$tool reason=$1"
   jq -n --arg r "$1" '{decision:"block", reason:$r}'
   exit 0
 }
@@ -107,4 +109,5 @@ if [ "$tool" = "developer__shell" ]; then
   [ "$ok" -eq 0 ] && block "[PANTHEON] shell роли '$role': $reason. Policy: артефакты — через write в .pantheon/; остальное проси conductor."
 fi
 
+plog "debug" "guard.sh" "$session_id" "allowed" "tool=$tool role=$role"
 exit 0

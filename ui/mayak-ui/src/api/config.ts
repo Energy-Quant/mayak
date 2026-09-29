@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { kvSet } from "./db";
+import { log } from "../logger";
 
 export const configPath = () => join(homedir(), ".config/goose/config.yaml");
 export const promptsDir = () => join(homedir(), ".config/goose/prompts");
@@ -175,7 +176,8 @@ export function listRecipes(): RecipeRow[] {
   let entries: string[] = [];
   try {
     entries = readdirSync(dir);
-  } catch {
+  } catch (e) {
+    log.warn("config.listRecipes.readdir", `dir=${dir} ${e instanceof Error ? e.message : e}`);
     return out;
   }
   for (const f of entries) {
@@ -184,7 +186,8 @@ export function listRecipes(): RecipeRow[] {
     let raw = "";
     try {
       raw = readFileSync(full, "utf8");
-    } catch {
+    } catch (e) {
+      log.warn("config.listRecipes.read", `${f} ${e instanceof Error ? e.message : e}`);
       raw = "";
     }
     const pick = (key: string): string => {
@@ -283,7 +286,8 @@ export function saveAgentChain(role: string, chain: AgentChainToml, tomlPath?: s
   let parsed: { agents?: Record<string, unknown> } = {};
   try {
     parsed = parseToml(readFileSync(path, "utf8")) as typeof parsed;
-  } catch {
+  } catch (e) {
+    log.warn("config.saveAgentChain.parse", `${path} ${e instanceof Error ? e.message : e}`);
     parsed = {};
   }
   if (!parsed.agents) parsed.agents = {};

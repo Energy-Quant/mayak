@@ -27,6 +27,7 @@ import {
 import { getProviderCatalog, type Catalog } from "../api/catalog";
 import { copyText } from "../api/clipboard";
 import { autoTheme, font, fs, type WaveTheme } from "../tokens";
+import { log } from "../logger";
 
 const TABS = [
   ["models", "Модели"],
@@ -907,7 +908,7 @@ function AppTab(props: {
     }
     try {
       setLimits(getConfigLimits());
-    } catch {
+    } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
       setLimits(null);
     }
   }, []);

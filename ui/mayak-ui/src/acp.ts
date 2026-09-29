@@ -14,6 +14,7 @@ import { client, CLIENT_METHODS } from "@agentclientprotocol/sdk";
 import { createWebSocketStream } from "@agentclientprotocol/sdk/experimental/ws-client";
 import { start as startServer, stop as stopServer } from "./api/gooseServer";
 import { listSubagentChildren } from "./api/db";
+import { log } from "./logger";
 
 /** Вложение чата: картинка уходит ACP image-блоком; документ staged-ится в tmp и идёт путём в тексте */
 export interface Attachment {
@@ -150,6 +151,7 @@ export class AcpSession {
   }
 
   async start(workingDir?: string, loadId?: string) {
+    log.start("acp.start", `loadId=${loadId ?? "new"} dir=${workingDir ?? "default"}`);
     this.status = "starting";
     // без location.origin (нет DOM): base exact-list зашит в gooseServer.baseOrigins()
     const serve = await startServer(workingDir);
@@ -186,12 +188,14 @@ export class AcpSession {
       // старых чатах падали), applySid пропускался → sid не менялся → poll субагентов
       // опрашивал чужую сессию и панель исчезала. Берём запрошенный id.
       this.sessionId = loaded?.sessionId ?? loadId;
+      log.info("acp.start.loaded", `session=${this.sessionId} fromLoad=${loaded?.sessionId ?? "undefined"}`);
     } else {
       const created = (await this.connection.agent.request("session/new", {
         cwd,
         mcpServers: [],
       } as never)) as { sessionId: string };
       this.sessionId = created.sessionId;
+      log.info("acp.start.created", `session=${this.sessionId}`);
     }
     this.status = "ready";
     this.handlers.onReady();
@@ -210,8 +214,15 @@ export class AcpSession {
    * Паритет с оригинальным Goose: картинки → ACP image, файлы → путь в тексте.
    */
   async prompt(text: string, images?: { data: string; mimeType: string }[], filePaths?: string[]) {
-    if (!this.sessionId) throw new Error("сессия не открыта");
-    if (this.dead) throw new Error("сессия закрыта");
+    if (!this.sessionId) {
+      log.error("acp.prompt", "сессия не открыта");
+      throw new Error("сессия не открыта");
+    }
+    if (this.dead) {
+      log.error("acp.prompt", "сессия закрыта");
+      throw new Error("сессия закрыта");
+    }
+    log.start("acp.prompt", `chars=${text.length} images=${images?.length ?? 0} files=${filePaths?.length ?? 0}`);
     let body = text;
     // регистрируем пути для контекста субагентов
     if (filePaths?.length) {
@@ -251,11 +262,11 @@ export class AcpSession {
     this.dead = true;
     try {
       void this.wsStream?.writable?.close?.();
-    } catch {
-      /* уже закрыт */
+    } catch (e) {
+      log.debug("acp.stop.ws-close", e instanceof Error ? e.message : String(e));
     }
     this.wsStream = null;
-    if (killServer) stopServer().catch(() => {});
+    if (killServer) stopServer().catch((e) => log.fail("acp.stop.stopServer", e));
     this.status = "idle";
     this.sessionId = null;
     this.connection = null;
@@ -340,7 +351,7 @@ export class AcpSession {
               sessionId: subId,
               prompt: [{ type: "text", text: ctx }],
             })
-            .catch(() => {}); // субагент мог уже завершиться — не критично
+            .catch((e) => log.warn("acp.auto-context.subagent", `sub=${subId} ${e instanceof Error ? e.message : e}`)); // субагент мог уже завершиться
         }
         break;
       }

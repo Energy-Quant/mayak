@@ -15,6 +15,7 @@ import {
 } from "../api/config";
 import { getProviderCatalog, type Catalog } from "../api/catalog";
 import { fs, type WaveTheme } from "../tokens";
+import { log } from "../logger";
 
 const ROLE_LABEL: Record<Role, string> = {
   goose: "🪿 Goose — оркестратор",

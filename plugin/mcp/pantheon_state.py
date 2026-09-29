@@ -18,6 +18,28 @@ import sys
 
 DB_PATH = os.environ.get("PANTHEON_DB", os.path.expanduser("~/.local/share/goose/pantheon.db"))
 
+# ── сквозное логирование (единый формат с mayak-ui logger.ts) ──────────────
+# 2026-09-29T21:40:12.345Z | ERROR | pantheon_state.py | sid | event | detail
+_LOG_PATH = os.path.expanduser("~/.local/state/pantheon/guard.log")
+_LOG_LEVELS = {"debug": 10, "info": 20, "warn": 30, "error": 40}
+_LOG_THRESHOLD = _LOG_LEVELS.get(os.environ.get("MAYAK_LOG", "info").lower(), 20)
+
+
+def _log(level: str, event: str, detail: str = "", session_id: str = "-") -> None:
+    if _LOG_LEVELS.get(level, 20) < _LOG_THRESHOLD:
+        return
+    import datetime
+    ts = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds")
+    line = f"{ts} | {level.upper():5} | pantheon_state.py | {session_id:12} | {event} | {detail}\n"
+    try:
+        os.makedirs(os.path.dirname(_LOG_PATH), exist_ok=True)
+        with open(_LOG_PATH, "a") as f:
+            f.write(line)
+    except Exception:
+        pass
+    if _LOG_LEVELS.get(level, 20) >= 30:
+        sys.stderr.write(line)
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
   session_id TEXT PRIMARY KEY, parent_session_id TEXT,
@@ -208,14 +230,19 @@ def handle(msg):
     if method == "tools/call":
         name = msg["params"]["name"]
         args = msg["params"].get("arguments", {})
+        sid = args.get("session_id") or args.get("run_session_id") or "-"
+        _log("info", "mcp.tools/call.start", f"tool={name}", sid)
         if name not in TOOLS:
+            _log("warn", "mcp.tools/call", f"unknown tool={name}", sid)
             return {"jsonrpc": "2.0", "id": mid, "result": {
                 "content": [{"type": "text", "text": f"Unknown tool: {name}"}], "isError": True}}
         try:
             result = TOOLS[name][0](args)
+            _log("info", "mcp.tools/call.end", f"tool={name} ok=1", sid)
             return {"jsonrpc": "2.0", "id": mid, "result": {
                 "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=1)}]}}
         except Exception as e:  # noqa: BLE001
+            _log("error", "mcp.tools/call.end", f"tool={name} ok=0 {e}", sid)
             return {"jsonrpc": "2.0", "id": mid, "result": {
                 "content": [{"type": "text", "text": f"Error: {e}"}], "isError": True}}
     return {"jsonrpc": "2.0", "id": mid,
@@ -234,6 +261,7 @@ TOOL_DOCS = {
 
 
 def main():
+    _log("info", "mcp.ready", f"db={DB_PATH}")
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -241,6 +269,7 @@ def main():
         try:
             msg = json.loads(line)
         except json.JSONDecodeError:
+            _log("warn", "mcp.bad-json", line[:120])
             continue
         resp = handle(msg)
         if resp is not None:

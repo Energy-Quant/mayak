@@ -5,11 +5,13 @@
  * список субагентов (listSubagents по parentId) остаётся.
  */
 const KEY = "mayak-last-sid";
+import { log } from "./logger";
 
 let initial: string | null = null;
 try {
   initial = globalThis.localStorage?.getItem(KEY) ?? null;
-} catch {
+} catch (e) {
+  log.debug("chatSession.read", e instanceof Error ? e.message : String(e));
   initial = null;
 }
 

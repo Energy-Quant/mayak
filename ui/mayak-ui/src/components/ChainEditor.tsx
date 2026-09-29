@@ -21,6 +21,7 @@ import {
 } from "../api/catalog";
 import { Icon } from "./Icon";
 import { fs, type WaveTheme } from "../tokens";
+import { log } from "../logger";
 
 // ── Типы ──────────────────────────────────────────────────────────────────────
 
@@ -274,7 +275,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
       try {
         const cat = await getProviderCatalog();
         if (alive) setCatalog(cat);
-      } catch {
+      } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
         if (alive) setCatalog(null); // каталог недоступен → model как text input
       }
       if (alive) setLoading(false);

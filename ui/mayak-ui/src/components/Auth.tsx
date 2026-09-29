@@ -2,6 +2,7 @@
 // Значения API-ключей UI принципиально не показывает — goose хранит их в системном брелоке.
 import { Icon } from "./Icon";
 import { fs, type WaveTheme } from "../tokens";
+import { log } from "../logger";
 
 export default function Auth(props: { t: WaveTheme }) {
   const t = props.t;
