@@ -1,5 +1,5 @@
 /**
- * acp.ts — ACP-сессия к goose serve (порт из pantheon-ui без Tauri/DOM).
+ * acp.ts — ACP-сессия к goose serve (порт из pantheon-ui-tauri-legacy без Tauri/DOM).
  * Транспорт: @agentclientprotocol/sdk (experimental/ws-client) + нативный
  * WebSocket Bun — Origin не шлётся (нет custom-protocol), рук в Origin-политику
  * goose не нужно; --allowed-origin base-list остаётся в gooseServer.ts.

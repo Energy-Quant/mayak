@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Собирает фронт (dist) + релизный бинарник и готовит папку для makepkg
+# ┌─ LEGACY: сборка Tauri-версии (pantheon-ui-tauri-legacy) ─────────────┐
+# │ Активный UI = mayak-ui (GPUIX). Этот скрипт оставлен как reference.  │
+# │ Для mayak-ui будет свой build-pkg (шаг 9 плана).                      │
+# └───────────────────────────────────────────────────────────────────────┘
 # ВАЖНО: tauri встраивает dist/ ПРИ КОМПИЛЯЦИИ — без pnpm build бинарь увезёт старый UI
 set -euo pipefail
-UI=~/pantheon/ui/pantheon-ui
+UI=~/pantheon/ui/pantheon-ui-tauri-legacy
 PKG=~/pantheon/packaging
 cd "$UI" && pnpm build
 cd "$UI/src-tauri" && cargo build --release --features custom-protocol

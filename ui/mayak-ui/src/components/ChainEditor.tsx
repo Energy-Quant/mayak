@@ -1,6 +1,6 @@
 /**
  * ChainEditor — GPUIX-порт редактора цепочек агентов (pantheon.toml).
- * Легаси: pantheon-ui/src/components/ChainEditor.tsx (602 строки, CSS/классы).
+ * Легаси: ui/pantheon-ui-tauri-legacy/src/components/ChainEditor.tsx (602 строки, CSS/классы).
  *
  * Модель: цепочка = primary + fallbacks[] (шаг = provider + model).
  * note — UI-only, в toml не пишется. Только saveAgentChain (без автосинка).
@@ -39,7 +39,7 @@ interface CheckState {
   text?: string;
 }
 
-// ── Пресеты (скопированы as-is из легаси pantheon-ui/src/api.ts) ──────────────
+// ── Пресеты (скопированы as-is из легаси ui/pantheon-ui-tauri-legacy/src/api.ts) ──────────────
 
 const PRESETS: Record<string, AgentChain[]> = {
   "OpenCode Go (подписка)": [

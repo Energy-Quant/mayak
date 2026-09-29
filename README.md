@@ -1,13 +1,16 @@
-# Пантеон
+# Маяк (ex-Пантеон)
 
-Мультиагентная надстройка над goose: **Оракул** (мышление, read-only), **Библиотекарь** (исследования, read-only), **Goose** (оркестратор+исполнитель). Полный план: `~/Documents/Obsidian Vault/02 Проекты/Pantheon/План и архитектура — Пантеон.md` (ревизия 2).
+Мультиагентная надстройка над goose: **Оракул** (мышление, read-only), **Библиотекарь** (исследования, read-only), **Goose** (оркестратор+исполнитель). Актуальный план: `~/Documents/Obsidian Vault/02 Проекты/Pantheon/План и архитектура — Маяк.md` (ревизия 3).
 
 ## Слои
 | Слой | Статус | Где |
 |---|---|---|
 | 1. Личности (config-only) | ✅ Phase 0 | `agents/` → `~/.agents/agents/`, `recipes/` → `~/.config/goose/recipes/` |
 | 2. Контроль (hooks+DB+MCP) | ✅ Phase 1 | `plugin/` → `~/.agents/plugins/pantheon/` |
-| 3. Tauri-клиент pantheon-ui | 🚧 Phase 2 | `ui/pantheon-ui/` (скелет) |
+| 3. UI-клиент mayak-ui (GPUIX) | ✅ Phase 4 | `ui/mayak-ui/` — **активный стек** |
+| 3'. Tauri-клиент (legacy) | 🗄 archive | `ui/pantheon-ui-tauri-legacy/` — reference, не собирается |
+
+Карта-граф архитектуры: `docs/architecture.md` (mermaid, Infigraph).
 
 ## Модели (подписка OpenCode Go, rev 2)
 | Роль | Primary | Fallbacks |
@@ -16,7 +19,7 @@
 | Оракул | `opencode_go/glm-5.3` | `opencode_go/kimi-k3` → `opencode_go/gpt-5.6-luna` |
 | Библиотекарь | `opencode_go/deepseek-v4.1-flash` ⚠️ Privacy=Global | `opencode_go/glm-5.3-flash` → `ollama_cloud/deepseek-v4-flash:0731` |
 
-Цепочки: `~/.config/goose/pantheon.toml` (редактируются нативно из pantheon-ui, Phase 2).
+Цепочки: `~/.config/goose/pantheon.toml` (редактируются из mayak-ui → ChainEditor).
 
 ## Установка
 ```bash

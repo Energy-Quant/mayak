@@ -25,7 +25,7 @@ graph TB
 
     subgraph L2["Phase 2–4 — UI клиент"]
         MAYAK["mayak-ui (GPUIX)<br/>активный стек"]
-        LEGACY["pantheon-ui (Tauri)<br/>legacy, reference"]
+        LEGACY["pantheon-ui-tauri-legacy<br/>архив, не собирается"]
     end
 
     subgraph DATA[("Данные")]
@@ -307,7 +307,7 @@ erDiagram
 | 1 | `saveAgentChain` не синкает frontmatter + recipes | config.ts → TOML пишется, md/yaml — нет |
 | 2 | 37 сирот `parent_session_id=NULL` | sessions.db, listSubagentChildren не находит |
 | 3 | file-deps не резолвит импорты (SCIP enrichment в фоне) | infigraph file-deps = 0 |
-| 4 | `ui/pantheon-ui` (Tauri legacy) дублирует mayak-ui | два UI-стека в одном репо |
+| 4 | ~~два UI-стека~~ → **закрыто**: `ui/pantheon-ui-tauri-legacy` (архив, 1.8M исходников, target/node_modules удалены) | |
 
 ---
 
