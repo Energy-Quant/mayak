@@ -1,0 +1,10 @@
+# Infigraph ignore — исключаем не-исходники
+node_modules/
+target/
+dist/
+build/
+.git/
+*.lock
+pnpm-lock.yaml
+package-lock.json
+bun.lock
