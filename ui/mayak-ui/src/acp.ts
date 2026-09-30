@@ -131,6 +131,8 @@ type Handlers = {
   onUsage?: (u: { used: number; size?: number }) => void;
   onReady: () => void;
   onError: (e: string) => void;
+  /** P6: событие создания/обновления субагента (tool_call с subagent_session_id) */
+  onSubagentEvent?: (id: string) => void;
 };
 
 type AnyConn = {
@@ -344,6 +346,8 @@ export class AcpSession {
           toolStatus: up.status as ChatMessage["toolStatus"],
           subagentSessionId: meta?.subagent_session_id,
         });
+        // P6: событийный триггер rail — без ожидания poll
+        if (meta?.subagent_session_id) this.handlers.onSubagentEvent?.(meta.subagent_session_id);
         // ── автоконтекст субагенту: пути изображений + напоминание про delegate ──
         // delegate передаёт ТОЛЬКО текст — image-блоки не доходят. Если в сессии
         // есть staged-изображения, шлём субагенту follow-up с путями (session/prompt

@@ -506,6 +506,16 @@ export function ChatPage(props: {
       onTodo: (items) => setTodos(items.length ? items : null),
       onUsage: (u) =>
         setCtx((c) => ({ ...c, tokens: u.used, limit: u.size ?? c.limit })),
+      onSubagentEvent: () => {
+        // P6: событийное обновление rail (tool_call с subagent_session_id)
+        // lastSidRef вместо sid — замыкание makeSession может быть stale
+        try {
+          const s = lastSidRef.current;
+          if (s) setSubagents(listSubagents(s));
+        } catch (e) {
+          log.debug("ui.subagentEvent", String(e));
+        }
+      },
       onReady: () => setStatus("ready"),
       onError: (e) => {
         setError(e);
@@ -694,7 +704,8 @@ export function ChatPage(props: {
       }
     };
     poll();
-    const iv = setInterval(poll, 3000);
+    // P6: poll = reconcilation каждые 15с (события — основной механизм)
+    const iv = setInterval(poll, 15000);
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sid]);
