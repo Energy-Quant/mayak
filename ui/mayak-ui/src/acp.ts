@@ -93,7 +93,24 @@ export function parseTodos(content: unknown): TodoItem[] {
   return out.filter((x) => x.content.length > 0);
 }
 
-export type AcpStatus = "idle" | "starting" | "ready" | "error";
+/**
+ * P16: машина состояний ACP-сессии.
+ * idle → connecting → ready → streaming → closed
+ *                 ↘ error ↗ (с возможностью reconnect → connecting)
+ * Валидные переходы фиксируются — недопустимые игнорируются с логом.
+ */
+export type SessionState = "idle" | "connecting" | "ready" | "streaming" | "closed" | "error";
+
+const VALID_TRANSITIONS: Record<SessionState, SessionState[]> = {
+  idle: ["connecting", "closed"],
+  connecting: ["ready", "error", "closed"],
+  ready: ["streaming", "error", "closed", "connecting"], // connecting = reconnect
+  streaming: ["ready", "error", "closed"],
+  error: ["connecting", "closed"], // reconnect или похоронить
+  closed: ["connecting"], // только полный новый start (resurrect)
+};
+
+export type AcpStatus = SessionState;
 
 /**
  * Ошибки WebSocket приезжают Event'ом → String(e) = «[object Event]».
@@ -143,11 +160,11 @@ export class AcpSession {
   private connection: AnyConn | null = null;
   private sessionId: string | null = null;
   private handlers: Handlers;
-  status: AcpStatus = "idle";
+  status: SessionState = "idle";
   /** реестр путей staged-изображений сессии — пробрасываем субагентам через delegate context */
   private sessionImagePaths: string[] = [];
-  /** после stop/disconnect — гасим все коллбэки и запросы (защита от «ACP connection closed» в новой сессии) */
-  private dead = false;
+  /** P16: машина состояний. dead() = state==="closed" (совместимость). */
+  private state: SessionState = "idle";
   /** P2 watchdog: интервал проверки здоровья и авто-reconnect с backoff */
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectAttempts = 0;
@@ -159,6 +176,26 @@ export class AcpSession {
     this.handlers = h;
   }
 
+  /** P16: валидированный переход. Недопустимый — игнор + warn. */
+  private transition(next: SessionState): boolean {
+    const cur = this.state;
+    if (!VALID_TRANSITIONS[cur].includes(next)) {
+      log.warn("acp.state.invalid", `${cur} → ${next} (проигнорирован)`);
+      return false;
+    }
+    if (cur !== next) {
+      log.info("acp.state", `${cur} → ${next}`);
+      this.state = next;
+      this.status = next;
+    }
+    return true;
+  }
+
+  /** Совместимость: замена старого dead-буля. */
+  private get isClosed(): boolean {
+    return this.state === "closed";
+  }
+
   /** id текущей ACP-сессии — родитель для иерархии субагентов */
   get id(): string | null {
     return this.sessionId;
@@ -166,12 +203,12 @@ export class AcpSession {
 
   async start(workingDir?: string, loadId?: string) {
     log.start("acp.start", `loadId=${loadId ?? "new"} dir=${workingDir ?? "default"}`);
-    this.status = "starting";
+    this.transition("connecting");
     // без location.origin (нет DOM): base exact-list зашит в gooseServer.baseOrigins()
     const serve = await startServer(workingDir);
     const stream = createWebSocketStream(serve.ws_url, { protocols: [] } as never);
     this.wsStream = stream as never;
-    this.dead = false;
+    // resurrect из closed допустим (VALID: closed→connecting уже прошёл)
 
     const app = client({ name: "mayak-ui" })
       .onRequest(CLIENT_METHODS.session_request_permission, async (): Promise<any> => ({
@@ -211,7 +248,7 @@ export class AcpSession {
       this.sessionId = created.sessionId;
       log.info("acp.start.created", `session=${this.sessionId}`);
     }
-    this.status = "ready";
+    this.transition("ready");
     this.handlers.onReady();
     // P2: watchdog на каждую активную сессию
     this.startWatchdog();
@@ -234,7 +271,7 @@ export class AcpSession {
       log.error("acp.prompt", "сессия не открыта");
       throw new AppError(E.ACP_NO_SESSION, "prompt: сессия не открыта");
     }
-    if (this.dead) {
+    if (this.isClosed) {
       log.error("acp.prompt", "сессия закрыта");
       throw new AppError(E.ACP_DEAD, "prompt: сессия закрыта", { recoverable: true });
     }
@@ -290,7 +327,7 @@ export class AcpSession {
 
   /** Один тик watchdog: здоровье сайдкара; при отказе — reconnect с backoff. */
   private async watchdogTick(): Promise<void> {
-    if (this.dead) return this.stopWatchdog();
+    if (this.isClosed) return this.stopWatchdog();
     const h = await healthCheck();
     if (h.ok) {
       this.reconnectAttempts = 0;
@@ -305,7 +342,7 @@ export class AcpSession {
     this.reconnectAttempts++;
     log.info("acp.watchdog.reconnect", `attempt=${this.reconnectAttempts} backoff=${backoff}ms`);
     await new Promise((r) => setTimeout(r, backoff));
-    if (this.dead) return;
+    if (this.isClosed) return;
     try {
       const sid = this.sessionId;
       const wasLoad = !!sid;
@@ -314,12 +351,13 @@ export class AcpSession {
       log.info("acp.watchdog.reconnected", `session=${this.sessionId}`);
     } catch (e) {
       log.fail("acp.watchdog.reconnect", e);
+      this.transition("error");
     }
   }
 
   /** killServer=true — полный стоп (unmount/retry); false — только закрыть WS, сервер переиспользуется */
   stop(killServer = true) {
-    this.dead = true;
+    this.transition("closed");
     try {
       void this.wsStream?.writable?.close?.();
     } catch (e) {
@@ -328,7 +366,7 @@ export class AcpSession {
     this.stopWatchdog();
     this.wsStream = null;
     if (killServer) stopServer().catch((e) => log.fail("acp.stop.stopServer", e));
-    this.status = "idle";
+    // state уже closed; idle остаётся в status для UI до следующего start
     this.sessionId = null;
     this.connection = null;
   }
@@ -339,13 +377,14 @@ export class AcpSession {
   }
 
   private handleSessionUpdate(u: Record<string, any>) {
-    if (this.dead) return;
+    if (this.isClosed) return;
     const up = u.update ?? u;
     const kind: string = up.sessionUpdate ?? "";
     const id: string = up.sessionId ?? up.toolCallId ?? crypto.randomUUID();
 
     switch (kind) {
       case "agent_message_chunk": {
+        this.transition("streaming");
         const text =
           typeof up.content === "object" && up.content
             ? String(up.content.text ?? "")

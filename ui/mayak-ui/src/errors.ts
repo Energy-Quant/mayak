@@ -105,7 +105,7 @@ function defaultUserMessage(code: string): string {
 }
 
 /** Привести любую ошибку к AppError (граница UI / catch). */
-export function toAppError(e: unknown, fallbackCode = E.UI_UNKNOWN): AppError {
+export function toAppError(e: unknown, fallbackCode: ErrorCode | string = E.UI_UNKNOWN): AppError {
   if (e instanceof AppError) return e;
   const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
   return new AppError(fallbackCode, detail, { context: { raw: detail } });
