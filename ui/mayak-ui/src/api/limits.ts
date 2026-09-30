@@ -3,6 +3,7 @@
  * GET https://opencode.ai/zen/go/v1/usage — UA + x-opencode-session обязательны.
  */
 import { opencodeApiKey } from "./catalog";
+import { AppError, E } from "../errors";
 
 export interface UsageWindow {
   status: string;
@@ -20,7 +21,7 @@ const emptyWindow = (): UsageWindow => ({ status: "unknown", percent: 0, resetsA
 export async function getOpencodeUsage(): Promise<UsageReport> {
   const key = opencodeApiKey();
   if (!key) {
-    throw new Error("OPENCODE_API_KEY не найден (env или ~/.config/goose/secrets.yaml)");
+    throw new AppError(E.NO_API_KEY, "OPENCODE_API_KEY не найден (env/secrets)");
   }
   const res = await fetch("https://opencode.ai/zen/go/v1/usage", {
     headers: {
@@ -30,7 +31,7 @@ export async function getOpencodeUsage(): Promise<UsageReport> {
     },
     signal: AbortSignal.timeout(8000),
   });
-  if (!res.ok) throw new Error(`usage request: HTTP ${res.status}`);
+  if (!res.ok) throw new AppError(E.HTTP_ERROR, `usage request: HTTP ${res.status}`, { context: { status: res.status } });
   const v = (await res.json()) as { usage?: Record<string, unknown> };
   const u = v.usage ?? {};
 

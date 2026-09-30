@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { log, logged } from "../logger";
+import { AppError, E } from "../errors";
 
 export const pantheonDbPath = () => join(homedir(), ".local/share/goose/pantheon.db");
 const sessionsDbPath = () => join(homedir(), ".local/share/goose/sessions/sessions.db");
@@ -15,8 +16,17 @@ const sessionsDbPath = () => join(homedir(), ".local/share/goose/sessions/sessio
 /** CREATE TABLE IF NOT EXISTS (runs, kv) + открытие — как open() в db.rs */
 export function openPantheon(): Database {
   const path = pantheonDbPath();
-  mkdirSync(join(path, ".."), { recursive: true });
-  const conn = new Database(path);
+  try {
+    mkdirSync(join(path, ".."), { recursive: true });
+  } catch (e) {
+    throw new AppError(E.DB_OPEN, `mkdir: ${e instanceof Error ? e.message : e}`, { context: { path } });
+  }
+  let conn: Database;
+  try {
+    conn = new Database(path);
+  } catch (e) {
+    throw new AppError(E.DB_OPEN, `open pantheon.db: ${e instanceof Error ? e.message : e}`, { context: { path } });
+  }
   conn.run(`CREATE TABLE IF NOT EXISTS runs (
       session_id TEXT PRIMARY KEY, parent_session_id TEXT,
       role TEXT NOT NULL DEFAULT 'adhoc', status TEXT DEFAULT 'running',
@@ -28,7 +38,12 @@ export function openPantheon(): Database {
 }
 
 function openSessions(): Database {
-  return new Database(sessionsDbPath(), { readonly: true });
+  const path = sessionsDbPath();
+  try {
+    return new Database(path, { readonly: true });
+  } catch (e) {
+    throw new AppError(E.DB_OPEN, `open sessions.db: ${e instanceof Error ? e.message : e}`, { context: { path } });
+  }
 }
 
 export interface RunRow {

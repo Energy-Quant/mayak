@@ -15,6 +15,7 @@ import { createWebSocketStream } from "@agentclientprotocol/sdk/experimental/ws-
 import { start as startServer, stop as stopServer } from "./api/gooseServer";
 import { listSubagentChildren } from "./api/db";
 import { log } from "./logger";
+import { AppError, E } from "./errors";
 
 /** Вложение чата: картинка уходит ACP image-блоком; документ staged-ится в tmp и идёт путём в тексте */
 export interface Attachment {
@@ -99,6 +100,12 @@ export type AcpStatus = "idle" | "starting" | "ready" | "error";
  * Разбираем в читаемый текст (type/code/message/error).
  */
 export function errText(e: unknown): string {
+  // структурированная ошибка → пользовательский текст (не внутренний detail)
+  if (e && typeof e === "object" && "userMessage" in e && "code" in e) {
+    const ae = e as { userMessage: string; code: string; detail: string };
+    log.debug("errText.appError", `${ae.code}: ${ae.detail}`);
+    return ae.userMessage;
+  }
   if (e instanceof Error) return e.message || e.name;
   if (e && typeof e === "object") {
     const any = e as Record<string, unknown>;
@@ -216,11 +223,11 @@ export class AcpSession {
   async prompt(text: string, images?: { data: string; mimeType: string }[], filePaths?: string[]) {
     if (!this.sessionId) {
       log.error("acp.prompt", "сессия не открыта");
-      throw new Error("сессия не открыта");
+      throw new AppError(E.ACP_NO_SESSION, "prompt: сессия не открыта");
     }
     if (this.dead) {
       log.error("acp.prompt", "сессия закрыта");
-      throw new Error("сессия закрыта");
+      throw new AppError(E.ACP_DEAD, "prompt: сессия закрыта", { recoverable: true });
     }
     log.start("acp.prompt", `chars=${text.length} images=${images?.length ?? 0} files=${filePaths?.length ?? 0}`);
     let body = text;

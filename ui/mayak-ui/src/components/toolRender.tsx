@@ -19,7 +19,7 @@ function tryParse(raw: string): Record<string, unknown> | null {
   try {
     const p = JSON.parse(t);
     return p && typeof p === "object" && !Array.isArray(p) ? (p as Record<string, unknown>) : null;
-  } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
+  } catch (e) { log.debug("ui.error", String(e));
     return null;
   }
 }

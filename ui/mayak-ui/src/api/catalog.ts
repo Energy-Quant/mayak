@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { parse as parseYaml } from "yaml";
 import { spawnSync } from "node:child_process";
 import { log } from "../logger";
+import { AppError, E } from "../errors";
 import type { ChainStep } from "./config";
 
 export interface CatalogModel {
@@ -130,7 +131,7 @@ export interface ValidationResult {
 export async function validateChainStep(step: ChainStep): Promise<ValidationResult> {
   const started = Date.now();
   const key = opencodeApiKey();
-  if (!key) throw new Error("OPENCODE_API_KEY не найден (env/secrets/keyring)");
+  if (!key) throw new AppError(E.NO_API_KEY, "OPENCODE_API_KEY не найден (env/secrets/keyring)");
 
   let status: number | null = null;
   try {

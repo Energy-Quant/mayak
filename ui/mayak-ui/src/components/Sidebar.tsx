@@ -59,7 +59,7 @@ export default function Sidebar(props: {
               !(s.title === "New Chat" && s.total_tokens === 0),
           ),
         );
-      } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
+      } catch (e) { log.debug("ui.error", String(e));
         setSessions([]);
       }
     };

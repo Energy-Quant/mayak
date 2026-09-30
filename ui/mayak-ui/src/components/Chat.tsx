@@ -524,7 +524,7 @@ export function ChatPage(props: {
       if (chatSession.lastSid) {
         try {
           await s.load(chatSession.lastSid); // история replay'ится (start(loadId))
-        } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
+        } catch (e) { log.debug("ui.error", String(e));
           // sid протух — fallback: новая сессия (session/new)
           s.stop(false);
           // ГОНКА: пока грузилась lastSid, pendingSession мог уже установить
@@ -581,7 +581,7 @@ export function ChatPage(props: {
           applySid(s.id);
           props.onSessionChange?.(s.id);
         }
-      } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
+      } catch (e) { log.debug("ui.error", String(e));
         // sid протух — fallback: новая сессия (session/new), как в connect()
         s.stop(false);
         const s2 = makeSession();
@@ -611,7 +611,7 @@ export function ChatPage(props: {
         const ch = getAgentChains().find((c) => c.role === "goose");
         if (ch?.primary?.model)
           setGooseModel({ provider: ch.primary.provider, model: ch.primary.model });
-      } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
+      } catch (e) { log.debug("ui.error", String(e));
         /* toml недоступен — оставляем прежнюю */
       }
     };
@@ -661,7 +661,7 @@ export function ChatPage(props: {
         let c: { goose_auto_compact_threshold: number | null } | null = null;
         try {
           c = getConfigLimits();
-        } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
+        } catch (e) { log.debug("ui.error", String(e));
           c = null;
         }
         setCtx((v) => ({
@@ -669,7 +669,7 @@ export function ChatPage(props: {
           limit: m?.context_limit ?? null,
           threshold: c?.goose_auto_compact_threshold ?? null,
         }));
-      } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
+      } catch (e) { log.debug("ui.error", String(e));
         /* каталог недоступен — метр без limit */
       }
     };
@@ -689,7 +689,7 @@ export function ChatPage(props: {
       try {
         // токены берём из usage_update (live); poll — только субагенты
         setSubagents(listSubagents(sid));
-      } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
+      } catch (e) { log.debug("ui.error", String(e));
         /* тихо */
       }
     };
@@ -774,7 +774,7 @@ export function ChatPage(props: {
             ].slice(0, 8),
           );
         }
-      } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
+      } catch (e) { log.debug("ui.error", String(e));
         /* нет wl-clipboard / не картинка */
       }
     };

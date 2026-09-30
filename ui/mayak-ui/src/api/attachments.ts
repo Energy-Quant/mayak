@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { log } from "../logger";
+import { AppError, E } from "../errors";
 
 const MAX_BYTES = 25 * 1024 * 1024;
 
@@ -27,10 +28,10 @@ export function stageAttachment(name: string, data: Uint8Array | number[]): stri
 /** Чтение файла для превью/ACP image — number[] (паритет Vec<u8> → JSON array) */
 export async function readFileBytes(path: string): Promise<number[]> {
   if (!existsSync(path) || !statSync(path).isFile()) {
-    throw new Error(`не найден: ${path}`);
+    throw new AppError(E.FILE_NOT_FOUND, `не найден: ${path}`, { context: { path } });
   }
   const meta = statSync(path);
-  if (meta.size > MAX_BYTES) throw new Error("файл больше 25 МБ");
+  if (meta.size > MAX_BYTES) throw new AppError(E.FILE_TOO_BIG, `файл больше 25 МБ: ${path}`, { context: { path, size: meta.size } });
   const buf = await Bun.file(path).arrayBuffer();
   return Array.from(new Uint8Array(buf));
 }

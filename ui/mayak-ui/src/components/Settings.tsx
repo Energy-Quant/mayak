@@ -908,7 +908,7 @@ function AppTab(props: {
     }
     try {
       setLimits(getConfigLimits());
-    } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
+    } catch (e) { log.debug("ui.error", String(e));
       setLimits(null);
     }
   }, []);

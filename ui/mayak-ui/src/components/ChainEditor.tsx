@@ -275,7 +275,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
       try {
         const cat = await getProviderCatalog();
         if (alive) setCatalog(cat);
-      } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
+      } catch (e) { log.debug("ui.error", String(e));
         if (alive) setCatalog(null); // каталог недоступен → model как text input
       }
       if (alive) setLoading(false);

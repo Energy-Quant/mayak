@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, openSync } from "node:fs";
 import net from "node:net";
 import type { Subprocess } from "bun";
 import { log } from "../logger";
+import { AppError, E } from "../errors";
 
 export interface ServeInfo {
   port: number;
@@ -63,7 +64,7 @@ function gooseBinary(): string {
     join(homedir(), ".local/bin/goose"),
   ];
   for (const p of candidates) if (existsSync(p)) return p;
-  throw new Error("goose binary не найден ни в /opt/goose-desktop, ни ~/.local/bin");
+  throw new AppError(E.GOOSE_BINARY, "goose binary не найден ни в /opt/goose-desktop, ни ~/.local/bin");
 }
 
 export async function start(dir?: string, origins?: string[]): Promise<ServeInfo> {
@@ -147,7 +148,7 @@ export async function start(dir?: string, origins?: string[]): Promise<ServeInfo
   }
   child = null;
   log.end("gooseServer.start", false, "readiness timeout 25s");
-  throw new Error("goose serve не поднялся за 25с");
+  throw new AppError(E.GOOSE_STARTUP, "goose serve не поднялся за 25с readiness timeout", { recoverable: true });
 }
 
 export async function stop(): Promise<void> {

@@ -74,7 +74,7 @@ export function History(props: { t: WaveTheme; onOpenSession?: (id: string) => v
   useEffect(() => {
     try {
       setRows(listSessions(onlyRunning));
-    } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
+    } catch (e) { log.debug("ui.error", String(e));
       setRows([]);
     }
   }, [onlyRunning]);
@@ -336,7 +336,7 @@ export function Recipes(props: { t: WaveTheme }) {
           (a.title || a.file).localeCompare(b.title || b.file, "ru"),
         ),
       );
-    } catch (e) { log.debug("ui.error", String(e)); log.debug("ui.error", String(e));
+    } catch (e) { log.debug("ui.error", String(e));
       setRows([]);
     }
   }, []);

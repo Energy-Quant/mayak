@@ -11,6 +11,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameS
 import { spawnSync } from "node:child_process";
 import { kvSet } from "./db";
 import { log } from "../logger";
+import { AppError, E } from "../errors";
 
 export const configPath = () => join(homedir(), ".config/goose/config.yaml");
 export const promptsDir = () => join(homedir(), ".config/goose/prompts");
@@ -86,8 +87,8 @@ export function toggleExtension(name: string, enabled: boolean, cfgPath?: string
   const raw = readCfg(path);
   const v = parseYaml(raw) as YamlObj;
   const ext = v.extensions as YamlObj | undefined;
-  if (!ext) throw new Error("нет секции extensions");
-  if (!(name in ext)) throw new Error(`расширение ${name} не найдено`);
+  if (!ext) throw new AppError(E.CONFIG_SECTION, "нет секции extensions в config.yaml");
+  if (!(name in ext)) throw new AppError(E.CONFIG_EXT_MISSING, `расширение ${name} не найдено`, { context: { name } });
   (ext[name] as YamlObj).enabled = enabled;
   backupAndWrite(path, raw, stringifyYaml(v), "yaml.bak-mayak");
 }
@@ -105,7 +106,7 @@ export function setActiveModel(provider: string, model: string, cfgPath?: string
 const GOOSE_MODES = ["auto", "approve", "manual", "chat", "chat_only"];
 
 export function setGooseMode(mode: string, cfgPath?: string): void {
-  if (!GOOSE_MODES.includes(mode)) throw new Error(`неизвестный режим: ${mode}`);
+  if (!GOOSE_MODES.includes(mode)) throw new AppError(E.CONFIG_BAD_MODE, `неизвестный режим: ${mode}`, { context: { mode } });
   const path = cfgPath ?? configPath();
   const raw = readCfg(path);
   const v = parseYaml(raw) as YamlObj;
@@ -133,7 +134,7 @@ export interface PromptFileInfo {
 
 function checkPromptName(name: string): void {
   if (!(PROMPT_FILES as readonly string[]).includes(name)) {
-    throw new Error(`недопустимое имя файла: ${name}`);
+    throw new AppError(E.CONFIG_BAD_NAME, `недопустимое имя файла: ${name}`, { context: { name } });
   }
 }
 
@@ -202,9 +203,9 @@ export function listRecipes(): RecipeRow[] {
 /** Открыть HTML-приложение goose (xdg-open) — паритет open_app */
 export function openApp(name: string): void {
   const path = join(homedir(), `.local/share/goose/apps/${name}.html`);
-  if (!existsSync(path)) throw new Error(`${name} не найден`);
+  if (!existsSync(path)) throw new AppError(E.CONFIG_NOT_FOUND, `${name} не найден`, { context: { name, path } });
   const r = spawnSync("xdg-open", [path], { stdio: "ignore" });
-  if (r.error) throw new Error(String(r.error));
+  if (r.error) throw new AppError(E.CONFIG_WRITE, String(r.error), { context: { name } });
 }
 
 // ── Приложение: пути и лимиты ──
@@ -281,7 +282,7 @@ export function getAgentChains(tomlPath?: string): AgentChainJson[] {
 }
 
 export function saveAgentChain(role: string, chain: AgentChainToml, tomlPath?: string): void {
-  if (!(ROLES as string[]).includes(role)) throw new Error(`неизвестная роль: ${role}`);
+  if (!(ROLES as string[]).includes(role)) throw new AppError(E.CONFIG_BAD_ROLE, `неизвестная роль: ${role}`, { context: { role } });
   const path = tomlPath ?? pantheonTomlPath();
   let parsed: { agents?: Record<string, unknown> } = {};
   try {
