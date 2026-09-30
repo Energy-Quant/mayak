@@ -281,6 +281,65 @@ export function getAgentChains(tomlPath?: string): AgentChainJson[] {
   return out;
 }
 
+/** Роль → runtime-файлы (frontmatter агента + recipe). goose не имеет md/recipe. */
+const ROLE_RUNTIME: Record<string, { agent?: string; recipe?: string }> = {
+  goose: {},
+  oracle: { agent: "oracle.md", recipe: "oracle-consult.yaml" },
+  librarian: { agent: "librarian.md", recipe: "librarian-research.yaml" },
+};
+
+/**
+ * P1-автосинк: смена модели в UI обязана дойти до delegate.
+ * Приоритет модели в goose: recipe.settings.goose_model → frontmatter → override.
+ * Пишем ОБА, иначе старая модель продолжает работать (урок glm-5.3→mimo).
+ */
+function syncModelToRuntime(role: string, step: ChainStep): void {
+  const rt = ROLE_RUNTIME[role];
+  if (!rt) return;
+
+  // 1. frontmatter агента ~/.agents/agents/<agent>.md
+  if (rt.agent) {
+    const agentPath = join(homedir(), ".agents/agents", rt.agent);
+    try {
+      if (existsSync(agentPath)) {
+        let text = readFileSync(agentPath, "utf8");
+        // frontmatter-блок: от первой строки --- до второй --- 
+        const fmMatch = text.match(/^---\n([\s\S]*?)\n---/);
+        if (fmMatch && /(^|\n)model:\s*[^\n]+/.test(fmMatch[1])) {
+          const fmNew = fmMatch[1].replace(/(^|\n)model:\s*[^\n]+/, `$1model: ${step.model}`);
+          text = text.replace(fmMatch[0], `---\n${fmNew}\n---`);
+          writeFileSync(agentPath, text);
+          log.info("config.syncAgentFrontmatter", `${rt.agent} model=${step.model}`);
+        } else {
+          log.warn("config.syncAgentFrontmatter", `frontmatter/model не найдены в ${rt.agent}`);
+        }
+      }
+    } catch (e) {
+      log.fail("config.syncAgentFrontmatter", e);
+    }
+  }
+
+  // 2. recipe ~/.config/goose/recipes/<recipe>.yaml — settings.goose_model
+  if (rt.recipe) {
+    const recipePath = join(homedir(), ".config/goose/recipes", rt.recipe);
+    try {
+      if (existsSync(recipePath)) {
+        let text = readFileSync(recipePath, "utf8");
+        const before = text;
+        // goose_model: <value> внутри settings
+        text = text.replace(/^(\s*goose_model:)\s*[^\n]+/m, `$1 ${step.model}`);
+        text = text.replace(/^(\s*goose_provider:)\s*[^\n]+/m, `$1 ${step.provider}`);
+        if (text !== before) {
+          writeFileSync(recipePath, text);
+          log.info("config.syncRecipe", `${rt.recipe} model=${step.model} provider=${step.provider}`);
+        }
+      }
+    } catch (e) {
+      log.fail("config.syncRecipe", e);
+    }
+  }
+}
+
 export function saveAgentChain(role: string, chain: AgentChainToml, tomlPath?: string): void {
   if (!(ROLES as string[]).includes(role)) throw new AppError(E.CONFIG_BAD_ROLE, `неизвестная роль: ${role}`, { context: { role } });
   const path = tomlPath ?? pantheonTomlPath();
@@ -297,6 +356,8 @@ export function saveAgentChain(role: string, chain: AgentChainToml, tomlPath?: s
   const tmp = `${path}.tmp`;
   writeFileSync(tmp, ser);
   renameSync(tmp, path);
+  // P1: автосинк — модель должна дойти до delegate (frontmatter + recipe)
+  syncModelToRuntime(role, chain.primary);
   // аудит в kv (паритет pantheon.rs)
   kvSet(
     `chain-edit:${Math.floor(Date.now() / 1000)}`,
