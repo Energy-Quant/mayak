@@ -45,6 +45,23 @@ async function statusOk(port: number): Promise<boolean> {
   }
 }
 
+/**
+ * P2 watchdog: проверка здоровья goose serve.
+ * Возвращает true если процесс жив и /status отвечает 200.
+ */
+export async function healthCheck(): Promise<{ ok: boolean; reason?: string }> {
+  if (!info) return { ok: false, reason: "не запущен" };
+  const alive = child !== null && child.exitCode === null && child.signalCode === null;
+  if (!alive) return { ok: false, reason: "процесс завершился" };
+  const ok = await statusOk(info.port);
+  return ok ? { ok: true } : { ok: false, reason: `/status не отвечает на порту ${info.port}` };
+}
+
+/** Последняя известная информация о сайдкаре (для UI-индикатора). */
+export function currentInfo(): ServeInfo | null {
+  return info;
+}
+
 /** Origins exact-list (хотя бы один --allowed-origin ВЫКЛЮЧАЕТ loopback-дефолт) */
 function baseOrigins(): string[] {
   return [

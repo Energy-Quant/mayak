@@ -12,7 +12,7 @@
  */
 import { client, CLIENT_METHODS } from "@agentclientprotocol/sdk";
 import { createWebSocketStream } from "@agentclientprotocol/sdk/experimental/ws-client";
-import { start as startServer, stop as stopServer } from "./api/gooseServer";
+import { start as startServer, stop as stopServer, healthCheck } from "./api/gooseServer";
 import { listSubagentChildren } from "./api/db";
 import { log } from "./logger";
 import { AppError, E } from "./errors";
@@ -148,6 +148,11 @@ export class AcpSession {
   private sessionImagePaths: string[] = [];
   /** после stop/disconnect — гасим все коллбэки и запросы (защита от «ACP connection closed» в новой сессии) */
   private dead = false;
+  /** P2 watchdog: интервал проверки здоровья и авто-reconnect с backoff */
+  private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  private reconnectAttempts = 0;
+  private static readonly WATCHDOG_MS = 10_000;
+  private static readonly MAX_BACKOFF = 8000;
   private wsStream: { writable?: { close?: () => Promise<void> } } | null = null;
 
   constructor(h: Handlers) {
@@ -208,6 +213,8 @@ export class AcpSession {
     }
     this.status = "ready";
     this.handlers.onReady();
+    // P2: watchdog на каждую активную сессию
+    this.startWatchdog();
   }
 
   /** Открыть существующую сессию (session/load): goose сам replay'ит историю */
@@ -266,6 +273,50 @@ export class AcpSession {
     if (this.sessionId) this.connection!.agent.notify("session/cancel", { sessionId: this.sessionId });
   }
 
+  /** P2: запустить watchdog (health-check каждые 10с + авто-reconnect) */
+  startWatchdog(): void {
+    this.stopWatchdog();
+    this.reconnectAttempts = 0;
+    this.watchdogTimer = setInterval(() => void this.watchdogTick(), AcpSession.WATCHDOG_MS);
+    log.debug("acp.watchdog.start", `interval=${AcpSession.WATCHDOG_MS}ms`);
+  }
+
+  stopWatchdog(): void {
+    if (this.watchdogTimer) {
+      clearInterval(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
+  }
+
+  /** Один тик watchdog: здоровье сайдкара; при отказе — reconnect с backoff. */
+  private async watchdogTick(): Promise<void> {
+    if (this.dead) return this.stopWatchdog();
+    const h = await healthCheck();
+    if (h.ok) {
+      this.reconnectAttempts = 0;
+      return;
+    }
+    log.warn("acp.watchdog.unhealthy", h.reason ?? "unknown");
+    this.handlers.onError(`goose serve: ${h.reason ?? "недоступен"} — переподключение…`);
+    const backoff = Math.min(
+      1000 * 2 ** this.reconnectAttempts,
+      AcpSession.MAX_BACKOFF,
+    );
+    this.reconnectAttempts++;
+    log.info("acp.watchdog.reconnect", `attempt=${this.reconnectAttempts} backoff=${backoff}ms`);
+    await new Promise((r) => setTimeout(r, backoff));
+    if (this.dead) return;
+    try {
+      const sid = this.sessionId;
+      const wasLoad = !!sid;
+      await this.start(undefined, wasLoad ? sid : undefined);
+      this.reconnectAttempts = 0;
+      log.info("acp.watchdog.reconnected", `session=${this.sessionId}`);
+    } catch (e) {
+      log.fail("acp.watchdog.reconnect", e);
+    }
+  }
+
   /** killServer=true — полный стоп (unmount/retry); false — только закрыть WS, сервер переиспользуется */
   stop(killServer = true) {
     this.dead = true;
@@ -274,6 +325,7 @@ export class AcpSession {
     } catch (e) {
       log.debug("acp.stop.ws-close", e instanceof Error ? e.message : String(e));
     }
+    this.stopWatchdog();
     this.wsStream = null;
     if (killServer) stopServer().catch((e) => log.fail("acp.stop.stopServer", e));
     this.status = "idle";
