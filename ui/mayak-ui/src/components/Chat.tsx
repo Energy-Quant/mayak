@@ -35,6 +35,7 @@ import { useDragWidth } from "../useDragWidth";
 import UsageBar from "./UsageBar";
 import { Markdown, UserText, italicize } from "./md";
 import { ToolBody, type ToolTheme } from "./toolRender";
+import { Interview, InterviewCard, interviewKeys } from "./Interview";
 import { fs, font, sp, type WaveTheme } from "../tokens";
 import { log } from "../logger";
 
@@ -190,6 +191,11 @@ const MessageItem = React.memo(function MessageItem(props: {
   onSubagent: (id: string) => void;
   streaming: boolean;
   isLast: boolean;
+  /** this message's interview modal is currently open */
+  interviewOpen: boolean;
+  /** this interview was submitted locally (answers sent to the agent) */
+  interviewDone: boolean;
+  onOpenInterview: (id: string) => void;
 }) {
   const { m, t } = props;
   const [open, setOpen] = useState(false);
@@ -282,6 +288,28 @@ const MessageItem = React.memo(function MessageItem(props: {
 
   if (m.role === "tool") {
     const failed = m.toolStatus === "failed";
+    // pantheon_interview → interactive survey card instead of the plain tool chip
+    if (m.interviewSpec) {
+      return (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            maxWidth: "96%",
+            width: "96%",
+            minWidth: 0,
+          }}
+        >
+          <InterviewCard
+            spec={m.interviewSpec}
+            t={t}
+            done={props.interviewDone}
+            open={props.interviewOpen}
+            onOpen={() => props.onOpenInterview(m.id)}
+          />
+        </div>
+      );
+    }
     return (
       <div
         style={{
@@ -467,6 +495,19 @@ export function ChatPage(props: {
   const [status, setStatus] = useState<"idle" | "starting" | "ready" | "error">("idle");
   const [error, setError] = useState("");
   const [streaming, setStreaming] = useState(false);
+  /** message id of the interview modal currently open (null = closed) */
+  const [openInterviewId, setOpenInterviewId] = useState<string | null>(null);
+  /** interviews submitted locally (answers delivered to the agent) */
+  const [interviewDone, setInterviewDone] = useState<Record<string, boolean>>({});
+  /**
+   * Mirror of `streaming` for the makeSession closure (it is built once per
+   * connect and cannot see state updates): only LIVE tool_calls auto-open the
+   * modal — history replay keeps the feed card instead of popping a stale survey.
+   */
+  const streamingRef = useRef(false);
+  useEffect(() => {
+    streamingRef.current = streaming;
+  }, [streaming]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   /** goose model selected in "Chains" — for the topbar badge */
   const [gooseModel, setGooseModel] = useState({ provider: "opencode_go", model: "glm-5.3-flash" });
@@ -490,7 +531,11 @@ export function ChatPage(props: {
 
   const makeSession = () =>
     new AcpSession({
-      onMessage: (m) =>
+      onMessage: (m) => {
+        // live pantheon_interview → pop the survey overlay right away
+        if (m.role === "tool" && m.interviewSpec && streamingRef.current) {
+          setOpenInterviewId(m.id);
+        }
         setMessages((ms) => {
           const last = ms[ms.length - 1];
           // Stream: every chunk continues the previous one (same role, chunk=true)
@@ -500,7 +545,8 @@ export function ChatPage(props: {
           const msg: ChatMessage =
             m.role === "agent" || m.role === "thinking" ? { ...m, chunk: true } : m;
           return [...ms.slice(-400), msg];
-        }),
+        });
+      },
       onUpdateMessage: (id, patch) =>
         setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, ...patch } : m))),
       onTodo: (items) => setTodos(items.length ? items : null),
@@ -580,6 +626,7 @@ export function ChatPage(props: {
       setMessages([]);
       setTodos(null);
       setSubagents([]);
+      setOpenInterviewId(null); // a survey from the previous session must not pop up here
       applySid(null); // stop the poll BEFORE async-load: the old interval could flood subagents of the previous session
       setError("");
       setStatus("starting");
@@ -762,6 +809,13 @@ export function ChatPage(props: {
   // Ctrl+V → native wl-paste (parity with the legacy keydown path)
   useEffect(() => {
     winKeys.chat = (e) => {
+      // Ctrl+→ advances the open interview (interviewKeys.next set by <Interview>)
+      if (e.modifiers?.ctrl && (e.key === "arrowright" || e.key === "right")) {
+        if (interviewKeys.next) {
+          interviewKeys.next();
+          return;
+        }
+      }
       if (e.key !== "v" || !e.modifiers?.ctrl || e.modifiers?.shift || e.modifiers?.alt) return;
       try {
         const ci = clipboardImage();
@@ -853,6 +907,7 @@ export function ChatPage(props: {
     setMessages([]);
     setTodos(null);
     setSubagents([]);
+    setOpenInterviewId(null); // stale overlay from the dropped connection
     const s = makeSession();
     sessionRef.current = s;
     try {
@@ -868,8 +923,57 @@ export function ChatPage(props: {
     }
   };
 
+  /**
+   * Send a prepared prompt (interview answers) through the same path as send(),
+   * without attachments. s.prompt() appends the local user bubble itself.
+   */
+  const deliver = useCallback(
+    async (text: string) => {
+      const s = sessionRef.current;
+      if (!s || status !== "ready" || !text.trim()) return;
+      setStreaming(true);
+      try {
+        await s.prompt(text);
+      } catch (e) {
+        if (sessionRef.current !== s) return;
+        const msg = errText(e);
+        if (/connection closed|stream is closed/i.test(msg) && lastSidRef.current) {
+          void reopenLast(); // WS drop → auto-reconnect with history replay
+        } else {
+          setError(`Ошибка промпта: ${msg.slice(0, 200)}`);
+        }
+      } finally {
+        if (sessionRef.current === s) setStreaming(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [status],
+  );
+
+  // --- Interview overlay control (stable identity → MessageItem memo holds) ---
+  const openInterview = useCallback((id: string) => {
+    log.info("ui.interview.open", `msg=${id}`);
+    setOpenInterviewId(id);
+  }, []);
+  const closeInterview = useCallback(() => {
+    setOpenInterviewId(null);
+  }, []);
+  const submitInterview = useCallback(
+    (id: string, answersText: string) => {
+      setInterviewDone((d) => ({ ...d, [id]: true }));
+      setOpenInterviewId(null);
+      log.info("ui.interview.send", `msg=${id} chars=${answersText.length}`);
+      void deliver(answersText);
+    },
+    [deliver],
+  );
+
   const running = subagents.filter((s) => s.running).length;
   const hasConversation = messages.length > 0;
+  /** spec behind the open interview overlay (null → overlay hidden) */
+  const openSpec = openInterviewId
+    ? (messages.find((m) => m.id === openInterviewId)?.interviewSpec ?? null)
+    : null;
 
   const messageRows = useMemo(
     () =>
@@ -881,10 +985,13 @@ export function ChatPage(props: {
           onSubagent={props.onOpenSubagent}
           streaming={streaming}
           isLast={i === messages.length - 1}
+          interviewOpen={openInterviewId === m.id}
+          interviewDone={!!interviewDone[m.id]}
+          onOpenInterview={openInterview}
         />
       )),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [messages, t, props.onOpenSubagent, streaming],
+    [messages, t, props.onOpenSubagent, streaming, openInterviewId, interviewDone, openInterview],
   );
 
   // --- Scroll-to-bottom button -------------------------------------------
@@ -970,7 +1077,7 @@ export function ChatPage(props: {
       style={{display: "flex", width: "100%", flexDirection: "row", height: "100%", minWidth: 0 }}
       onFileDrop={onDropPaths}
     >
-      <div style={{display: "flex", flexGrow: 1, flexShrink: 1, minWidth: 0, flexDirection: "column", height: "100%", backgroundColor: t.bg }} onFileDrop={onDropPaths}>
+      <div style={{display: "flex", flexGrow: 1, flexShrink: 1, minWidth: 0, flexDirection: "column", height: "100%", backgroundColor: t.bg, position: "relative" }} onFileDrop={onDropPaths}>
         {/* topbar */}
         <div
           style={{display: "flex", 
@@ -1352,6 +1459,19 @@ export function ChatPage(props: {
         </div>
 
         <UsageBar t={t} refreshKey={messages.length} />
+
+        {/* Interview overlay — MUST stay the last child: GPUIX has no z-index,
+            paint order = child order, so the modal draws above feed/input.
+            onClose keeps the feed card (re-openable); onSubmit marks the
+            interview done and delivers the answers as a user message. */}
+        {openSpec && openInterviewId ? (
+          <Interview
+            spec={openSpec}
+            t={t}
+            onSubmit={(text) => submitInterview(openInterviewId, text)}
+            onClose={closeInterview}
+          />
+        ) : null}
       </div>
 
       {/* right panel: todos + subagents */}

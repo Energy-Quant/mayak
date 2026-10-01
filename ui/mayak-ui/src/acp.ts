@@ -44,6 +44,80 @@ export interface ChatMessage {
   chunk?: boolean;
   /** raw tool input JSON — kept separately so tool_call_update cannot overwrite it */
   toolInput?: string;
+  /** pantheon_interview spec — message renders as an interactive survey (Interview.tsx) */
+  interviewSpec?: InterviewSpec;
+}
+
+/** One option of an interview question (pantheon_interview rawInput contract). */
+export interface InterviewOption {
+  label: string;
+  description?: string;
+}
+
+/** One interview question (pantheon_interview rawInput contract). */
+export interface InterviewQuestion {
+  question: string;
+  /** hint under the question; UI falls back to "Выберите один/несколько ответов" */
+  subtitle?: string;
+  /** true → checkbox (several answers), false/absent → radio (single answer) */
+  multiple?: boolean;
+  /** true → extra "custom answer" row with a free-text input */
+  allowCustom?: boolean;
+  options?: InterviewOption[];
+}
+
+/** Full interview spec carried by a tool_call ChatMessage. */
+export interface InterviewSpec {
+  title?: string;
+  questions: InterviewQuestion[];
+}
+
+/**
+ * Parse pantheon_interview rawInput into a renderable spec.
+ * Returns null on broken JSON or a wrong shape — the caller falls back to the
+ * plain tool-call render (log.warn happens at the call site).
+ */
+export function parseInterviewSpec(rawIn: unknown): InterviewSpec | null {
+  try {
+    const obj: unknown = typeof rawIn === "string" ? JSON.parse(rawIn) : rawIn;
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
+    const rawQuestions = (obj as { questions?: unknown }).questions;
+    if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) return null;
+    const questions: InterviewQuestion[] = [];
+    for (const q of rawQuestions) {
+      if (!q || typeof q !== "object" || Array.isArray(q)) continue;
+      const src = q as Record<string, unknown>;
+      const text = typeof src.question === "string" ? src.question.trim() : "";
+      if (!text) continue;
+      const options: InterviewOption[] = [];
+      if (Array.isArray(src.options)) {
+        for (const o of src.options) {
+          if (!o || typeof o !== "object" || Array.isArray(o)) continue;
+          const oo = o as Record<string, unknown>;
+          const label = typeof oo.label === "string" ? oo.label.trim() : "";
+          if (!label) continue;
+          options.push({
+            label,
+            description:
+              typeof oo.description === "string" && oo.description.trim() ? oo.description : undefined,
+          });
+        }
+      }
+      questions.push({
+        question: text,
+        subtitle: typeof src.subtitle === "string" && src.subtitle.trim() ? src.subtitle : undefined,
+        multiple: src.multiple === true,
+        allowCustom: src.allowCustom === true,
+        options,
+      });
+    }
+    if (!questions.length) return null;
+    const title = (obj as { title?: unknown }).title;
+    return { title: typeof title === "string" && title.trim() ? title : undefined, questions };
+  } catch (e) {
+    log.debug("acp.interview.parse", String(e));
+    return null;
+  }
 }
 
 export interface TodoItem {
@@ -654,6 +728,17 @@ export class AcpSession {
           if (items.length) this.handlers.onTodo(items);
         }
         const rawText = typeof rawIn === "string" ? rawIn : JSON.stringify(rawIn ?? "");
+        // pantheon_interview → interactive survey; bad/wrong-shape JSON keeps the plain tool-call
+        let interviewSpec: InterviewSpec | undefined;
+        if (
+          /interview/i.test(toolName) ||
+          /interview/i.test(String(up.name ?? "")) ||
+          /interview/i.test(String(up.kind ?? ""))
+        ) {
+          const spec = parseInterviewSpec(rawIn);
+          if (spec) interviewSpec = spec;
+          else log.warn("acp.interview.parse", `tool=${toolName} invalid rawInput — plain tool-call fallback`);
+        }
         this.handlers.onMessage({
           id: String(up.toolCallId ?? id),
           role: "tool",
@@ -662,6 +747,7 @@ export class AcpSession {
           toolName,
           toolStatus: up.status as ChatMessage["toolStatus"],
           subagentSessionId: meta?.subagent_session_id,
+          interviewSpec,
         });
         // P6: event-driven rail trigger — no need to wait for the poll
         if (meta?.subagent_session_id) this.handlers.onSubagentEvent?.(meta.subagent_session_id);

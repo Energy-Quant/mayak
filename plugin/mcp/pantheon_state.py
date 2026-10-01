@@ -9,6 +9,8 @@
   pantheon_log_event(kind, detail?)   — событие в kv/events
   pantheon_register_run(session_id, role, task_summary?, model?) — явная регистрация роли
   pantheon_kv_get(key) / pantheon_kv_set(key, value)
+  pantheon_interview(title?, questions) — create an interactive interview (survey) for the user
+  pantheon_interview_submit(interview_id, answers_text) — record the user's answers (audit)
 Только stdlib. Запуск: python3 pantheon_state.py (goose стартует сам как stdio extension).
 """
 import json
@@ -59,6 +61,9 @@ CREATE TABLE IF NOT EXISTS handoffs (id INTEGER PRIMARY KEY, from_role TEXT,
   to_role TEXT, payload TEXT, created_at TEXT DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, session_id TEXT,
   event TEXT, tool_name TEXT, detail TEXT, created_at TEXT DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS interviews (
+  id INTEGER PRIMARY KEY, session_id TEXT, spec_json TEXT, answers_json TEXT,
+  status TEXT DEFAULT 'pending', created_at TEXT DEFAULT (datetime('now')));
 """
 
 
@@ -171,6 +176,107 @@ def tool_kv_get(args):
     return {"key": args["key"], "value": row["value"] if row else None}
 
 
+def _validate_interview_spec(args):
+    """Validate rawInput for pantheon_interview and return a normalized spec dict.
+
+    Raises ValueError with a human-readable message on any problem.
+    """
+    questions = args.get("questions")
+    if not isinstance(questions, list) or not questions:
+        raise ValueError(
+            "поле `questions` обязательно и должно содержать минимум 1 вопрос "
+            "(array, minItems: 1)")
+    norm_questions = []
+    for i, q in enumerate(questions, 1):
+        if not isinstance(q, dict):
+            raise ValueError(f"вопрос #{i}: должен быть объектом {{question, options, …}}")
+        text = q.get("question")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError(f"вопрос #{i}: пустое поле `question` (string, required)")
+        options = q.get("options")
+        if not isinstance(options, list) or not options:
+            raise ValueError(
+                f"вопрос #{i} («{text.strip()[:50]}»): нужен минимум 1 вариант "
+                "`options` (array, minItems: 1)")
+        norm_options = []
+        for j, opt in enumerate(options, 1):
+            if not isinstance(opt, dict):
+                raise ValueError(f"вопрос #{i}, вариант #{j}: должен быть объектом {{label, description?}}")
+            label = opt.get("label")
+            if not isinstance(label, str) or not label.strip():
+                raise ValueError(f"вопрос #{i}, вариант #{j}: пустое поле `label` (string, required)")
+            norm_opt = {"label": label.strip()}
+            desc = opt.get("description")
+            if isinstance(desc, str) and desc.strip():
+                norm_opt["description"] = desc.strip()
+            norm_options.append(norm_opt)
+        norm_q = {
+            "question": text.strip(),
+            "multiple": bool(q.get("multiple", False)),
+            "allowCustom": bool(q.get("allowCustom", True)),
+            "options": norm_options,
+        }
+        subtitle = q.get("subtitle")
+        if isinstance(subtitle, str) and subtitle.strip():
+            norm_q["subtitle"] = subtitle.strip()
+        norm_questions.append(norm_q)
+    spec = {"questions": norm_questions}
+    title = args.get("title")
+    if isinstance(title, str) and title.strip():
+        spec["title"] = title.strip()
+    return spec
+
+
+def tool_interview_create(args):
+    spec = _validate_interview_spec(args)
+    sid = args.get("session_id") or "-"
+    conn = db()
+    cur = conn.execute(
+        "INSERT INTO interviews(session_id, spec_json, status) VALUES(?, ?, 'pending')",
+        (sid, json.dumps(spec, ensure_ascii=False)))
+    conn.commit()
+    interview_id = cur.lastrowid
+    conn.close()
+    _log("info", "mcp.interview.create",
+         f"id={interview_id} questions={len(spec['questions'])}", sid)
+    return {
+        "ok": True,
+        "interview_id": interview_id,
+        "message": ("Интервью показано пользователю. "
+                    "Прекрати генерацию и жди ответа — он придёт отдельным сообщением."),
+    }
+
+
+def tool_interview_submit(args):
+    interview_id = args.get("interview_id")
+    if not isinstance(interview_id, int):
+        raise ValueError("поле `interview_id` обязательно (integer)")
+    answers_text = args.get("answers_text")
+    if not isinstance(answers_text, str) or not answers_text.strip():
+        raise ValueError("поле `answers_text` обязательно (non-empty string)")
+    # Store as JSON: reuse raw JSON answers when possible, otherwise wrap plain text.
+    try:
+        parsed = json.loads(answers_text)
+        answers_json = json.dumps(parsed, ensure_ascii=False) if isinstance(parsed, (dict, list)) \
+            else json.dumps({"text": answers_text}, ensure_ascii=False)
+    except (json.JSONDecodeError, ValueError):
+        answers_json = json.dumps({"text": answers_text}, ensure_ascii=False)
+    conn = db()
+    row = conn.execute("SELECT id FROM interviews WHERE id=?", (interview_id,)).fetchone()
+    if row is None:
+        conn.close()
+        raise ValueError(f"интервью id={interview_id} не найдено")
+    conn.execute("UPDATE interviews SET answers_json=?, status='done' WHERE id=?",
+                 (answers_json, interview_id))
+    conn.commit()
+    sid = conn.execute("SELECT session_id FROM interviews WHERE id=?",
+                       (interview_id,)).fetchone()
+    conn.close()
+    _log("info", "mcp.interview.submit", f"id={interview_id} status=done",
+         sid["session_id"] if sid else "-")
+    return {"ok": True, "interview_id": interview_id, "status": "done"}
+
+
 TOOLS = {
     "pantheon_get_state": (tool_get_state, {
         "type": "object",
@@ -209,6 +315,45 @@ TOOLS = {
         "type": "object",
         "properties": {"key": {"type": "string"}},
         "required": ["key"],
+    }),
+    "pantheon_interview": (tool_interview_create, {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "questions": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string"},
+                        "subtitle": {"type": "string"},
+                        "multiple": {"type": "boolean", "default": False},
+                        "allowCustom": {"type": "boolean", "default": True},
+                        "options": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "label": {"type": "string"},
+                                    "description": {"type": "string"},
+                                },
+                                "required": ["label"],
+                            },
+                        },
+                    },
+                    "required": ["question", "options"],
+                },
+            },
+        },
+        "required": ["questions"],
+    }),
+    "pantheon_interview_submit": (tool_interview_submit, {
+        "type": "object",
+        "properties": {"interview_id": {"type": "integer"},
+                       "answers_text": {"type": "string"}},
+        "required": ["interview_id", "answers_text"],
     }),
 }
 
@@ -257,6 +402,10 @@ TOOL_DOCS = {
     "pantheon_register_run": "Явно зарегистрировать роль сессии (session_id, role)",
     "pantheon_kv_set": "Записать ключ-значение",
     "pantheon_kv_get": "Прочитать ключ-значение",
+    "pantheon_interview": ("Создать интерактивное интервью (опрос) для пользователя: 1–3 вопроса "
+                           "с вариантами ответов. После вызова ПРЕКРАТИ генерацию и жди ответа "
+                           "пользователя отдельным сообщением."),
+    "pantheon_interview_submit": "Зафиксировать ответы пользователя на интервью (interview_id, answers_text) — аудит",
 }
 
 

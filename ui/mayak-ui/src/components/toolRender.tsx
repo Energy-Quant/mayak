@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { parseTodos } from "../acp";
 import { fs } from "../tokens";
 import { log } from "../logger";
+import { questionsWord } from "./Interview";
 
 const clip = (s: string, n: number) =>
   s.length <= n ? s : s.slice(0, n).replace(/\s+\S*$/, "") + "…";
@@ -100,6 +101,23 @@ export function ToolBody(props: { toolName: string; rawText: string; theme: Tool
   const t = (props.rawText ?? "").trim();
   const j = tryParse(t);
   const th = props.theme;
+
+  // pantheon_interview → compact survey summary (full UI lives in Interview.tsx;
+  // this branch covers the plain tool-call fallback and the subagent stream)
+  if (/interview/.test(name)) {
+    const title = j ? String(j.title ?? "") : "";
+    const qs = j && Array.isArray(j.questions) ? j.questions.length : 0;
+    if (title || qs) {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <Badge label={one(title || "интервью")} color={th.magenta} th={th} />
+          {qs ? (
+            <text style={{ fontSize: fs.xs, color: th.dim }}>{`${qs} ${questionsWord(qs)}`}</text>
+          ) : null}
+        </div>
+      );
+    }
+  }
 
   // todo write → checklist
   if (/todo/.test(name)) {
