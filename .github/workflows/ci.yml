@@ -59,3 +59,24 @@ jobs:
           python-version: "3.11"
       - name: Unit tests (pantheon_state MCP)
         run: python3 plugin/mcp/test_pantheon_state.py
+
+  # Gate job named exactly "ci" — the single required status check for
+  # branch protection (main/dev require the "ci" context). It aggregates
+  # the three test jobs; PRs to main are blocked unless all pass.
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    needs: [mayak-ui, guard-rs, plugin-python]
+    if: always()
+    steps:
+      - name: All test jobs must pass
+        run: |
+          echo "mayak-ui=${{ needs.mayak-ui.result }}"
+          echo "guard-rs=${{ needs.guard-rs.result }}"
+          echo "plugin-python=${{ needs.plugin-python.result }}"
+          if [ "${{ needs.mayak-ui.result }}" != "success" ] || \
+             [ "${{ needs.guard-rs.result }}" != "success" ] || \
+             [ "${{ needs.plugin-python.result }}" != "success" ]; then
+            echo "One or more test jobs failed"; exit 1
+          fi
+          echo "All tests passed"
