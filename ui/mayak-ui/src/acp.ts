@@ -99,13 +99,13 @@ export function parseInterviewSpec(rawIn: unknown): InterviewSpec | null {
           options.push({
             label,
             description:
-              typeof oo.description === "string" && oo.description.trim() ? oo.description : undefined,
+              typeof oo.description === "string" && oo.description.trim() ? oo.description.trim() : undefined,
           });
         }
       }
       questions.push({
         question: text,
-        subtitle: typeof src.subtitle === "string" && src.subtitle.trim() ? src.subtitle : undefined,
+        subtitle: typeof src.subtitle === "string" && src.subtitle.trim() ? src.subtitle.trim() : undefined,
         multiple: src.multiple === true,
         allowCustom: src.allowCustom === true,
         options,
@@ -113,7 +113,7 @@ export function parseInterviewSpec(rawIn: unknown): InterviewSpec | null {
     }
     if (!questions.length) return null;
     const title = (obj as { title?: unknown }).title;
-    return { title: typeof title === "string" && title.trim() ? title : undefined, questions };
+    return { title: typeof title === "string" && title.trim() ? title.trim() : undefined, questions };
   } catch (e) {
     log.debug("acp.interview.parse", String(e));
     return null;

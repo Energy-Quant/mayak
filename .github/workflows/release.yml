@@ -1,0 +1,76 @@
+name: release
+
+# Mayak release — on tag push (v*), build binaries and attach them to a GitHub Release.
+# Tags are produced from main (stable) via CI/CD per the branch model.
+# Uses the built-in GITHUB_TOKEN; no extra secrets required.
+# Comments: English.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── mayak-ui (Bun compile → native binary) ──
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Build mayak-ui binary
+        working-directory: ui/mayak-ui
+        run: |
+          bun install
+          bunx tsc --noEmit
+          bun scripts/smoke.ts
+          bun scripts/unit-test.ts
+          bun build --compile app.tsx --outfile ../../dist/mayak-ui || bun build --compile index.ts --outfile ../../dist/mayak-ui
+          chmod +x ../../dist/mayak-ui
+
+      # ── guard-rs (Rust → pantheon-guard binary) ──
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build pantheon-guard binary
+        working-directory: plugin/guard-rs
+        run: |
+          cargo test --release
+          cargo build --release
+          mkdir -p ../../dist
+          cp target/release/pantheon-guard ../../dist/pantheon-guard
+          chmod +x ../../dist/pantheon-guard
+
+      # ── plugin python tests (gate) ──
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Plugin python tests
+        run: python3 plugin/mcp/test_pantheon_state.py
+
+      # ── publish ──
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/mayak-ui
+            dist/pantheon-guard
+          body: |
+            ## Mayak ${{ github.ref_name }}
+
+            Multi-agent orchestration over goose — stable release.
+
+            Binaries:
+            - `mayak-ui` — desktop client (GPUIX)
+            - `pantheon-guard` — read-only enforcement guard (Rust)
+
+            Install & docs: see `README.md` and `docs/`.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

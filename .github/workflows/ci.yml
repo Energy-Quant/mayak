@@ -1,0 +1,61 @@
+name: ci
+
+# Mayak CI — runs the full test suite on every push / PR to main, dev, feature-*.
+# Jobs mirror the local checks documented in AGENTS.md and docs/development:
+#   (1) mayak-ui  : bun tsc + smoke + unit tests
+#   (2) guard-rs  : cargo test + release build
+#   (3) plugin py : python unit tests (stdlib unittest)
+# Comments: English.
+
+on:
+  push:
+    branches: [main, dev, "feature/**"]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  mayak-ui:
+    name: mayak-ui (typescript / bun)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui/mayak-ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install
+      - name: Type check
+        run: bunx tsc --noEmit
+      - name: Smoke tests
+        run: bun scripts/smoke.ts
+      - name: Unit tests
+        run: bun scripts/unit-test.ts
+
+  guard-rs:
+    name: guard-rs (rust)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugin/guard-rs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Unit tests (guard policy)
+        run: cargo test --release
+      - name: Release build
+        run: cargo build --release
+
+  plugin-python:
+    name: plugin (python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Unit tests (pantheon_state MCP)
+        run: python3 plugin/mcp/test_pantheon_state.py
