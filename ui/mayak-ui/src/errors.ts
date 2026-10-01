@@ -1,17 +1,17 @@
 /**
- * errors.ts — структурированные ошибки Маяка (P3).
+ * errors.ts — Mayak structured errors (P3).
  *
- * Вместо throw new Error("что-то сломалось") — код + контекст + пользовательский текст.
- * Правила:
- *  - Каждый throw несёт code (машиночитаемо) + detail (для лога) + userMessage (для UI).
- *  - Граница UI ловит AppError → показывает userMessage, логирует detail с кодом.
- *  - Обычный Error тоже поддерживается через toAppError() на границах.
+ * Instead of throw new Error("something broke") — code + context + user-facing text.
+ * Rules:
+ *  - Every throw carries code (machine-readable) + detail (for logs) + userMessage (for the UI).
+ *  - The UI boundary catches AppError → shows userMessage, logs detail with the code.
+ *  - Plain Error is also supported via toAppError() at boundaries.
  */
 import { log } from "./logger";
 
-/** Коды ошибок — стабильные идентификаторы для обработки и поиска в логах. */
+/** Error codes — stable identifiers for handling and log search. */
 export const E = {
-  // конфиг
+  // config
   CONFIG_SECTION: "CONFIG_SECTION",
   CONFIG_EXT_MISSING: "CONFIG_EXT_MISSING",
   CONFIG_BAD_MODE: "CONFIG_BAD_MODE",
@@ -19,10 +19,10 @@ export const E = {
   CONFIG_NOT_FOUND: "CONFIG_NOT_FOUND",
   CONFIG_WRITE: "CONFIG_WRITE",
   CONFIG_BAD_ROLE: "CONFIG_BAD_ROLE",
-  // БД
+  // database
   DB_OPEN: "DB_OPEN",
   DB_QUERY: "DB_QUERY",
-  // каталог / ключи
+  // catalog / keys
   NO_API_KEY: "NO_API_KEY",
   CATALOG_READ: "CATALOG_READ",
   // goose serve
@@ -34,11 +34,11 @@ export const E = {
   ACP_DEAD: "ACP_DEAD",
   ACP_PROMPT: "ACP_PROMPT",
   ACP_LOAD: "ACP_LOAD",
-  // вложения
+  // attachments
   FILE_NOT_FOUND: "FILE_NOT_FOUND",
   FILE_TOO_BIG: "FILE_TOO_BIG",
   FILE_READ: "FILE_READ",
-  // сеть / лимиты
+  // network / limits
   HTTP_ERROR: "HTTP_ERROR",
   NETWORK: "NETWORK",
   // UI
@@ -67,7 +67,7 @@ export class AppError extends Error {
     this.userMessage = opts?.userMessage ?? defaultUserMessage(code);
     this.context = opts?.context ?? {};
     this.recoverable = opts?.recoverable ?? false;
-    // логируем в момент создания — точка отказа сразу в логе
+    // log at construction time — the failure point lands in the log immediately
     log.error(`err.${code}`, `${detail} ${JSON.stringify(this.context)}`);
   }
 }
@@ -104,14 +104,14 @@ function defaultUserMessage(code: string): string {
   }
 }
 
-/** Привести любую ошибку к AppError (граница UI / catch). */
+/** Coerce any error to AppError (UI boundary / catch). */
 export function toAppError(e: unknown, fallbackCode: ErrorCode | string = E.UI_UNKNOWN): AppError {
   if (e instanceof AppError) return e;
   const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
   return new AppError(fallbackCode, detail, { context: { raw: detail } });
 }
 
-/** Обёртка try-catch с structured error. */
+/** try-catch wrapper producing a structured error. */
 export async function tryOrAppError<T>(
   code: ErrorCode,
   fn: () => Promise<T>,
@@ -125,7 +125,7 @@ export async function tryOrAppError<T>(
   }
 }
 
-/** Синхронная версия. */
+/** Synchronous version. */
 export function tryOrAppErrorSync<T>(
   code: ErrorCode,
   fn: () => T,

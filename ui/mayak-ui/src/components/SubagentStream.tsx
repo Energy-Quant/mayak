@@ -1,7 +1,7 @@
 /**
- * SubagentStream — split-view live-вид субагента из sessions.db (опрос 2с).
- * virtual-list (отдельная колонка — НЕ nested scroll), markdown host-элемент,
- * структурированные tool-call, expandable thinking/text (preview + Show more).
+ * SubagentStream — split-view live subagent view from sessions.db (2s poll).
+ * virtual-list (separate column — NOT nested scroll), markdown host element,
+ * structured tool calls, expandable thinking/text (preview + Show more).
  */
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { listSubagentMessages, type SubagentMessage, type ContentBlock } from "../api/db";
@@ -9,7 +9,6 @@ import { copyText } from "../api/clipboard";
 import { ToolBody, type ToolTheme } from "./toolRender";
 import { fs, type WaveTheme } from "../tokens";
 import { Markdown, italicize } from "./md";
-import { log } from "../logger";
 
 function roleLabel(role: string, isFirstUser: boolean): string {
   if (role === "user") return isFirstUser ? "Задача" : "Ход";
@@ -18,7 +17,7 @@ function roleLabel(role: string, isFirstUser: boolean): string {
   return role;
 }
 
-/** Свёрнутое тело → кнопка → раскрытие (без inner scroll — outer list скроллит) */
+/** Collapsed body → button → expand (no inner scroll — the outer list scrolls) */
 function Expandable(props: {
   children: ReactNode;
   t: WaveTheme;
@@ -61,10 +60,16 @@ function Expandable(props: {
 
 function CopyBtn(props: { text: string; t: WaveTheme }) {
   const [copied, setCopied] = useState(false);
+  // Reset the "copied" hint in an effect so the timer is cleared on unmount
+  // (a bare setTimeout would call setState on an unmounted component).
+  useEffect(() => {
+    if (!copied) return;
+    const iv = setTimeout(() => setCopied(false), 1200);
+    return () => clearTimeout(iv);
+  }, [copied]);
   const copy = useCallback(() => {
     copyText(props.text);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
   }, [props.text]);
   return (
     <div
@@ -88,7 +93,7 @@ function CopyBtn(props: { text: string; t: WaveTheme }) {
   );
 }
 
-/** Thinking: скрыт по умолчанию — только заголовок, клик раскрывает (паритет чата) */
+/** Thinking: hidden by default — header only, click expands (chat parity) */
 const ThinkingRow = memo(function ThinkingRow(props: { text: string; t: WaveTheme }) {
   const [open, setOpen] = useState(false);
   const t = props.t;

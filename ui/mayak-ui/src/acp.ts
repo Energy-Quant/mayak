@@ -1,32 +1,33 @@
 /**
- * acp.ts — ACP-сессия к goose serve (порт из pantheon-ui-tauri-legacy без Tauri/DOM).
- * Транспорт: @agentclientprotocol/sdk (experimental/ws-client) + нативный
- * WebSocket Bun — Origin не шлётся (нет custom-protocol), рук в Origin-политику
- * goose не нужно; --allowed-origin base-list остаётся в gooseServer.ts.
+ * acp.ts — ACP session to goose serve (ported from pantheon-ui-tauri-legacy, no Tauri/DOM).
+ * Transport: @agentclientprotocol/sdk (experimental/ws-client) + native Bun
+ * WebSocket — no Origin header is sent (no custom protocol), so there is no need
+ * to fight goose's Origin policy; the --allowed-origin base list lives in gooseServer.ts.
  *
- * Сохранено 1:1 (приёмка шага 4): sessionImagePaths registry, [imgs] блок,
- * автоконтекст delegate-субагенту, agent_thought_chunk merge, errText(),
- * parseTodos/cleanTodoText, toolInput не затирается tool_call_update.
- * Убрано: safeInvoke/isTauri (Tauri IPC), compressImageDataUrl (DOM canvas →
- * api/attachments.compressImageBytes на ImageMagick, шаг 8).
+ * Kept 1:1 (step 4 acceptance): sessionImagePaths registry, [imgs] block,
+ * auto-context for delegate subagents, agent_thought_chunk merge, errText(),
+ * parseTodos/cleanTodoText, toolInput preserved across tool_call_update.
+ * Removed: safeInvoke/isTauri (Tauri IPC), compressImageDataUrl (DOM canvas →
+ * api/attachments.compressImageBytes on ImageMagick, step 8).
  */
 import { client, CLIENT_METHODS } from "@agentclientprotocol/sdk";
 import { createWebSocketStream } from "@agentclientprotocol/sdk/experimental/ws-client";
 import { start as startServer, stop as stopServer, healthCheck } from "./api/gooseServer";
-import { listSubagentChildren } from "./api/db";
+import { listSubagentChildren, recordUsage } from "./api/db";
+import { getGooseMode, setGooseModeListener } from "./api/config";
 import { log } from "./logger";
 import { AppError, E } from "./errors";
 
-/** Вложение чата: картинка уходит ACP image-блоком; документ staged-ится в tmp и идёт путём в тексте */
+/** Chat attachment: images travel as an ACP image block; documents are staged to tmp and sent as a path in the text */
 export interface Attachment {
   id: string;
   name: string;
-  /** для превью (data URL) — только картинки */
+  /** preview (data URL) — images only */
   dataUrl?: string;
-  /** base64 без префикса — для ACP image */
+  /** base64 without prefix — for the ACP image block */
   data?: string;
   mimeType?: string;
-  /** staged путь — документы (как drop в оригинальном Goose) */
+  /** staged path — documents (as in the original Goose drop) */
   path?: string;
   kind: "image" | "file";
   error?: string;
@@ -39,9 +40,9 @@ export interface ChatMessage {
   toolName?: string;
   toolStatus?: "pending" | "in_progress" | "completed" | "failed";
   subagentSessionId?: string;
-  /** создан из agent_message_chunk / agent_thought_chunk — следующие чанки дописываем */
+  /** created from agent_message_chunk / agent_thought_chunk — subsequent chunks append to it */
   chunk?: boolean;
-  /** сырой JSON входа инструмента — сохраняется отдельно, чтобы tool_call_update не затирал */
+  /** raw tool input JSON — kept separately so tool_call_update cannot overwrite it */
   toolInput?: string;
 }
 
@@ -50,7 +51,7 @@ export interface TodoItem {
   status: "pending" | "in_progress" | "completed";
 }
 
-/** Чистим строку TODO от служебных символов: «1. », «- [x] », «✅», «— ВЫПОЛНЕНО», кавычки-хвосты */
+/** Strip service markers from a TODO line: "1. ", "- [x] ", "✅", "— DONE —", trailing quotes */
 export function cleanTodoText(raw: string): string {
   let t = raw.replace(/\\n/g, " ").replace(/[`*_]/g, "").trim();
   t = t.replace(/^\s*\d+[.)]\s+/, ""); // 1. →
@@ -62,8 +63,8 @@ export function cleanTodoText(raw: string): string {
 }
 
 /**
- * TODO приходит НЕ апдейтом plan/todos, а вызовом инструмента `todo write`
- * с content=markdown-список (1. ... / - [x] ... / ✅ в конце строки).
+ * TODOs arrive NOT as a plan/todos update, but as a `todo write` tool call
+ * with content = a markdown list (1. ... / - [x] ... / ✅ at line end).
  */
 export function parseTodos(content: unknown): TodoItem[] {
   if (typeof content !== "string") return [];
@@ -94,10 +95,10 @@ export function parseTodos(content: unknown): TodoItem[] {
 }
 
 /**
- * P16: машина состояний ACP-сессии.
+ * P16: ACP session state machine.
  * idle → connecting → ready → streaming → closed
- *                 ↘ error ↗ (с возможностью reconnect → connecting)
- * Валидные переходы фиксируются — недопустимые игнорируются с логом.
+ *                 ↘ error ↗ (may reconnect → connecting)
+ * Valid transitions are fixed — invalid ones are ignored with a log entry.
  */
 export type SessionState = "idle" | "connecting" | "ready" | "streaming" | "closed" | "error";
 
@@ -106,18 +107,18 @@ const VALID_TRANSITIONS: Record<SessionState, SessionState[]> = {
   connecting: ["ready", "error", "closed"],
   ready: ["streaming", "error", "closed", "connecting"], // connecting = reconnect
   streaming: ["ready", "error", "closed"],
-  error: ["connecting", "closed"], // reconnect или похоронить
-  closed: ["connecting"], // только полный новый start (resurrect)
+  error: ["connecting", "closed"], // reconnect or bury it
+  closed: ["connecting"], // only a full new start (resurrect)
 };
 
 export type AcpStatus = SessionState;
 
 /**
- * Ошибки WebSocket приезжают Event'ом → String(e) = «[object Event]».
- * Разбираем в читаемый текст (type/code/message/error).
+ * WebSocket errors arrive as an Event → String(e) = "[object Event]".
+ * Parse them into readable text (type/code/message/error).
  */
 export function errText(e: unknown): string {
-  // структурированная ошибка → пользовательский текст (не внутренний detail)
+  // structured error → user-facing text (never the internal detail)
   if (e && typeof e === "object" && "userMessage" in e && "code" in e) {
     const ae = e as { userMessage: string; code: string; detail: string };
     log.debug("errText.appError", `${ae.code}: ${ae.detail}`);
@@ -140,16 +141,42 @@ export function errText(e: unknown): string {
   return s === "[object Event]" ? "WebSocket: соединение отклонено" : s;
 }
 
+/** One option offered by goose in session/request_permission (ACP PermissionOption). */
+export interface PermissionOptionView {
+  optionId: string;
+  name: string;
+  kind: string;
+}
+
+/** UI-facing view of an incoming session/request_permission (P0). */
+export interface PermissionRequest {
+  sessionId: string | null;
+  toolCallId: string;
+  toolName: string;
+  /** effective GooseMode id (auto/approve/smart_approve/chat) */
+  mode: string;
+  options: PermissionOptionView[];
+}
+
+/** session/request_permission response: user-selected option or cancelled. */
+type PermissionOutcome = { outcome: { outcome: "selected"; optionId: string } | { outcome: "cancelled" } };
+
 type Handlers = {
   onMessage: (m: ChatMessage) => void;
   onUpdateMessage: (id: string, patch: Partial<ChatMessage>) => void;
   onTodo: (items: TodoItem[]) => void;
-  /** usage_update: used = токены в контексте, size = окно (из ACP UsageUpdate) */
+  /** usage_update: used = tokens in context, size = window (from ACP UsageUpdate) */
   onUsage?: (u: { used: number; size?: number }) => void;
   onReady: () => void;
   onError: (e: string) => void;
-  /** P6: событие создания/обновления субагента (tool_call с subagent_session_id) */
+  /** P6: subagent created/updated event (tool_call carrying subagent_session_id) */
   onSubagentEvent?: (id: string) => void;
+  /**
+   * P0: user-facing permission dialog. Return the selected optionId, or
+   * null/undefined to deny. When absent, permission requests are denied by
+   * default (auto-allow only in GooseMode "auto").
+   */
+  onRequestPermission?: (req: PermissionRequest) => Promise<string | null> | string | null;
 };
 
 type AnyConn = {
@@ -161,26 +188,37 @@ export class AcpSession {
   private sessionId: string | null = null;
   private handlers: Handlers;
   status: SessionState = "idle";
-  /** реестр путей staged-изображений сессии — пробрасываем субагентам через delegate context */
+  /** registry of staged image paths for the session — passed to subagents via delegate context */
   private sessionImagePaths: string[] = [];
-  /** P16: машина состояний. dead() = state==="closed" (совместимость). */
+  /** P16: state machine. dead() = state==="closed" (compatibility shim). */
   private state: SessionState = "idle";
-  /** P2 watchdog: интервал проверки здоровья и авто-reconnect с backoff */
+  /** P2 watchdog: health-check interval + auto-reconnect with backoff */
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  /** Guards overlapping watchdog ticks (healthCheck + backoff sleep may outlive the interval). */
+  private watchdogTickInFlight = false;
+  /** Bumped by stop(): invalidates in-flight async start work (stale-generation guard). */
+  private generation = 0;
+  /** Tail of the per-instance operation queue: start/load never overlap (watchdog vs UI). */
+  private opTail: Promise<unknown> = Promise.resolve();
   private reconnectAttempts = 0;
   private static readonly WATCHDOG_MS = 10_000;
   private static readonly MAX_BACKOFF = 8000;
   private wsStream: { writable?: { close?: () => Promise<void> } } | null = null;
+  /** Current ACP session mode id (goose 1.52 session modes; drives permission policy) */
+  private currentModeId: string | null = null;
 
   constructor(h: Handlers) {
     this.handlers = h;
+    // Settings → setGooseMode must reach the LIVE session via session/set_mode,
+    // not only config.yaml (applies to sessions started later).
+    setGooseModeListener((mode) => void this.applyModeToSession(mode));
   }
 
-  /** P16: валидированный переход. Недопустимый — игнор + warn. */
+  /** P16: validated transition. Invalid → ignored with a warn. */
   private transition(next: SessionState): boolean {
     const cur = this.state;
     if (!VALID_TRANSITIONS[cur].includes(next)) {
-      log.warn("acp.state.invalid", `${cur} → ${next} (проигнорирован)`);
+      log.warn("acp.state.invalid", `${cur} → ${next} (ignored)`);
       return false;
     }
     if (cur !== next) {
@@ -191,93 +229,152 @@ export class AcpSession {
     return true;
   }
 
-  /** Совместимость: замена старого dead-буля. */
+  /** Compatibility: replaces the old `dead` boolean. */
   private get isClosed(): boolean {
     return this.state === "closed";
   }
 
-  /** id текущей ACP-сессии — родитель для иерархии субагентов */
+  /** id of the current ACP session — parent for the subagent hierarchy */
   get id(): string | null {
     return this.sessionId;
   }
 
-  async start(workingDir?: string, loadId?: string) {
-    log.start("acp.start", `loadId=${loadId ?? "new"} dir=${workingDir ?? "default"}`);
-    this.transition("connecting");
-    // без location.origin (нет DOM): base exact-list зашит в gooseServer.baseOrigins()
-    const serve = await startServer(workingDir);
-    const stream = createWebSocketStream(serve.ws_url, { protocols: [] } as never);
-    this.wsStream = stream as never;
-    // resurrect из closed допустим (VALID: closed→connecting уже прошёл)
-
-    const app = client({ name: "mayak-ui" })
-      .onRequest(CLIENT_METHODS.session_request_permission, async (): Promise<any> => ({
-        outcome: { outcome: "selected", optionId: "allow_once" },
-      }))
-      .onNotification(CLIENT_METHODS.session_update, async (ctx: { params: Record<string, unknown> }) => {
-        this.handleSessionUpdate(ctx.params);
-      });
-    this.connection = app.connect(stream) as unknown as AnyConn;
-
-    await this.connection.agent.request("initialize", {
-      protocolVersion: 1,
-      clientCapabilities: {},
-      clientInfo: { name: "mayak-ui", version: "0.1.0" },
-    });
-
-    const cwd = workingDir ?? "/home/quant";
-    if (loadId) {
-      // открытие существующей сессии: история replay'ится через session/update
-      const loaded = (await this.connection.agent.request("session/load", {
-        sessionId: loadId,
-        cwd,
-        mcpServers: [],
-      } as never)) as { sessionId?: string };
-      // ACP session/load НЕ возвращает sessionId (ключи: modes/configOptions/_meta —
-      // проверено сырого против goose). Раньше loaded.sessionId = undefined →
-      // sessionId=null → prompt() бросал «сессия не открыта» (Сжатие/отправка в
-      // старых чатах падали), applySid пропускался → sid не менялся → poll субагентов
-      // опрашивал чужую сессию и панель исчезала. Берём запрошенный id.
-      this.sessionId = loaded?.sessionId ?? loadId;
-      log.info("acp.start.loaded", `session=${this.sessionId} fromLoad=${loaded?.sessionId ?? "undefined"}`);
-    } else {
-      const created = (await this.connection.agent.request("session/new", {
-        cwd,
-        mcpServers: [],
-      } as never)) as { sessionId: string };
-      this.sessionId = created.sessionId;
-      log.info("acp.start.created", `session=${this.sessionId}`);
-    }
-    this.transition("ready");
-    this.handlers.onReady();
-    // P2: watchdog на каждую активную сессию
-    this.startWatchdog();
+  /**
+   * Start (or restart) the ACP session. Serialized per instance through
+   * enqueue(): a watchdog reconnect can never overlap a UI-driven start/load.
+   */
+  async start(workingDir?: string, loadId?: string): Promise<void> {
+    return this.enqueue(() => this.doStart(workingDir, loadId));
   }
 
-  /** Открыть существующую сессию (session/load): goose сам replay'ит историю */
-  async load(sessionId: string, workingDir?: string) {
-    if (this.connection) {
-      this.stop();
-    }
-    await this.start(workingDir, sessionId);
+  /** Per-instance async mutex: operations run one after another, link rejections are swallowed. */
+  private enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.opTail.then(fn, fn);
+    this.opTail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   /**
-   * session/prompt: текст + image-блоки (Ctrl+V) + staged-пути документов.
-   * Паритет с оригинальным Goose: картинки → ACP image, файлы → путь в тексте.
+   * Stale-generation guard: if stop() ran while this start was awaiting,
+   * undo anything assigned after the cleanup and abort — a stopped session
+   * must never resurrect from a late await.
+   */
+  private abortIfStale(gen: number, where: string): boolean {
+    if (gen === this.generation) return false;
+    log.debug("acp.start.stale", `where=${where} gen=${gen} current=${this.generation}`);
+    void this.wsStream?.writable?.close?.();
+    this.wsStream = null;
+    this.connection = null;
+    this.sessionId = null;
+    return true;
+  }
+
+  private async doStart(workingDir?: string, loadId?: string): Promise<void> {
+    log.start("acp.start", `loadId=${loadId ?? "new"} dir=${workingDir ?? "default"}`);
+    const gen = this.generation;
+    this.transition("connecting");
+    try {
+      // No location.origin (no DOM): base exact-list is compiled into gooseServer.baseOrigins().
+      const serve = await startServer(workingDir);
+      if (this.abortIfStale(gen, "after-spawn")) return;
+      const stream = createWebSocketStream(serve.ws_url, { protocols: [] } as never);
+      this.wsStream = stream as never;
+      // Resurrect from closed is allowed (VALID: closed→connecting already passed).
+
+      const app = client({ name: "mayak-ui" })
+        // P0 security: never auto-allow — decision lives in handlePermissionRequest
+        .onRequest(
+          CLIENT_METHODS.session_request_permission,
+          async (ctx: { params: Record<string, unknown> }) =>
+            this.handlePermissionRequest((ctx?.params ?? {}) as Record<string, unknown>),
+        )
+        .onNotification(CLIENT_METHODS.session_update, async (ctx: { params: Record<string, unknown> }) => {
+          this.handleSessionUpdate(ctx.params);
+        });
+      this.connection = app.connect(stream) as unknown as AnyConn;
+
+      await this.connection.agent.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {},
+        clientInfo: { name: "mayak-ui", version: "0.1.0" },
+      });
+      if (this.abortIfStale(gen, "after-initialize")) return;
+
+      const cwd = workingDir ?? "/home/quant";
+      if (loadId) {
+        // Open an existing session: goose replays its history via session/update.
+        const loaded = (await this.connection.agent.request("session/load", {
+          sessionId: loadId,
+          cwd,
+          mcpServers: [],
+        } as never)) as { sessionId?: string; modes?: { currentModeId?: string } | null };
+        // ACP session/load does NOT return sessionId (keys: modes/configOptions/_meta —
+        // verified raw against goose). When loaded.sessionId is undefined →
+        // sessionId=null → prompt() threw "session not open" (compress/send in old
+        // chats failed), applySid was skipped → sid unchanged → the subagent poll
+        // watched a foreign session and the panel disappeared. Take the requested id.
+        this.sessionId = loaded?.sessionId ?? loadId;
+        // Capture goose session mode state (ACP modes.currentModeId) for permission policy.
+        this.currentModeId = loaded?.modes?.currentModeId ?? this.currentModeId;
+        log.info("acp.start.loaded", `session=${this.sessionId} fromLoad=${loaded?.sessionId ?? "undefined"} mode=${this.currentModeId ?? "-"}`);
+      } else {
+        const created = (await this.connection.agent.request("session/new", {
+          cwd,
+          mcpServers: [],
+        } as never)) as { sessionId: string; modes?: { currentModeId?: string } | null };
+        this.sessionId = created.sessionId;
+        this.currentModeId = created.modes?.currentModeId ?? this.currentModeId;
+        log.info("acp.start.created", `session=${this.sessionId} mode=${this.currentModeId ?? "-"}`);
+      }
+      if (this.abortIfStale(gen, "after-session")) return;
+      // Push GOOSE_MODE from config.yaml onto the live session (goose 1.52 session/set_mode).
+      await this.pushConfigMode();
+      if (this.abortIfStale(gen, "before-ready")) return;
+      this.transition("ready");
+      this.handlers.onReady();
+      // P2: watchdog per active session.
+      this.startWatchdog();
+    } catch (e) {
+      if (gen !== this.generation) {
+        // Session was stopped while starting — the failure belongs to a dead generation.
+        log.debug("acp.start.stale-error", e instanceof Error ? e.message : String(e));
+        return;
+      }
+      this.transition("error");
+      log.fail("acp.start", e);
+      throw e;
+    }
+  }
+
+  /** Open an existing session (session/load): goose replays the history itself. Serialized like start(). */
+  async load(sessionId: string, workingDir?: string): Promise<void> {
+    return this.enqueue(async () => {
+      if (this.connection) {
+        this.stop();
+      }
+      await this.doStart(workingDir, sessionId);
+    });
+  }
+
+  /**
+   * session/prompt: text + image blocks (Ctrl+V) + staged document paths.
+   * Parity with original Goose: images → ACP image, files → path in text.
    */
   async prompt(text: string, images?: { data: string; mimeType: string }[], filePaths?: string[]) {
-    if (!this.sessionId) {
-      log.error("acp.prompt", "сессия не открыта");
-      throw new AppError(E.ACP_NO_SESSION, "prompt: сессия не открыта");
+    if (!this.connection || !this.sessionId) {
+      log.error("acp.prompt", "session not open");
+      throw new AppError(E.ACP_NO_SESSION, "prompt: session not open");
     }
     if (this.isClosed) {
-      log.error("acp.prompt", "сессия закрыта");
-      throw new AppError(E.ACP_DEAD, "prompt: сессия закрыта", { recoverable: true });
+      log.error("acp.prompt", "session closed");
+      throw new AppError(E.ACP_DEAD, "prompt: session closed", { recoverable: true });
     }
     log.start("acp.prompt", `chars=${text.length} images=${images?.length ?? 0} files=${filePaths?.length ?? 0}`);
     let body = text;
-    // регистрируем пути для контекста субагентов
+    // register paths for subagent context
     if (filePaths?.length) {
       for (const p of filePaths) {
         if (!this.sessionImagePaths.includes(p)) this.sessionImagePaths.push(p);
@@ -285,7 +382,7 @@ export class AcpSession {
       const paths = filePaths.join(" ");
       body = body ? `${body}\n${paths}` : paths;
     }
-    // [imgs] — машиночитаемый блок путей: system.md требует прокидывать их в delegate context
+    // [imgs] — machine-readable path block: system.md requires forwarding them in delegate context
     if (this.sessionImagePaths.length > 0) {
       body += `\n\n[imgs] ${this.sessionImagePaths.join(" ")}`;
     }
@@ -295,22 +392,25 @@ export class AcpSession {
       blocks.push({ type: "image", data: img.data, mimeType: img.mimeType });
     }
     if (blocks.length === 0) blocks.push({ type: "text", text: body || "…" });
-    // локальный рендер для пользователя
+    // local render for the user
     const local = images?.length
       ? `${body}${body && images.length ? "\n" : ""}${images.map((_, i) => `🖼 ${i + 1}`).join(" ")}`
       : body;
     this.handlers.onMessage({ id: crypto.randomUUID(), role: "user", text: local });
-    await this.connection!.agent.request("session/prompt", {
+    await this.connection.agent.request("session/prompt", {
       sessionId: this.sessionId,
       prompt: blocks,
     });
   }
 
   async cancel() {
-    if (this.sessionId) this.connection!.agent.notify("session/cancel", { sessionId: this.sessionId });
+    // connection can be null when stop() raced an in-flight prompt — never notify on a dead socket
+    if (this.connection && this.sessionId) {
+      this.connection.agent.notify("session/cancel", { sessionId: this.sessionId });
+    }
   }
 
-  /** P2: запустить watchdog (health-check каждые 10с + авто-reconnect) */
+  /** P2: start the watchdog (health check every 10s + auto-reconnect) */
   startWatchdog(): void {
     this.stopWatchdog();
     this.reconnectAttempts = 0;
@@ -325,9 +425,20 @@ export class AcpSession {
     }
   }
 
-  /** Один тик watchdog: здоровье сайдкара; при отказе — reconnect с backoff. */
+  /** One watchdog tick: sidecar health; on failure — reconnect with backoff. */
   private async watchdogTick(): Promise<void> {
     if (this.isClosed) return this.stopWatchdog();
+    // Skip the tick while a previous one still runs (healthCheck + backoff may outlive the interval).
+    if (this.watchdogTickInFlight) return;
+    this.watchdogTickInFlight = true;
+    try {
+      await this.watchdogWork();
+    } finally {
+      this.watchdogTickInFlight = false;
+    }
+  }
+
+  private async watchdogWork(): Promise<void> {
     const h = await healthCheck();
     if (h.ok) {
       this.reconnectAttempts = 0;
@@ -347,16 +458,19 @@ export class AcpSession {
       const sid = this.sessionId;
       const wasLoad = !!sid;
       await this.start(undefined, wasLoad ? sid : undefined);
+      // start() is queued: stop() may have run while we waited — then there is nothing to report
+      if (this.isClosed) return;
       this.reconnectAttempts = 0;
       log.info("acp.watchdog.reconnected", `session=${this.sessionId}`);
     } catch (e) {
       log.fail("acp.watchdog.reconnect", e);
-      this.transition("error");
+      if (!this.isClosed) this.transition("error");
     }
   }
 
-  /** killServer=true — полный стоп (unmount/retry); false — только закрыть WS, сервер переиспользуется */
+  /** killServer=true — full stop (unmount/retry); false — close the WS only, the server is reused */
   stop(killServer = true) {
+    this.generation++; // invalidate any in-flight doStart (stale-generation guard)
     this.transition("closed");
     try {
       void this.wsStream?.writable?.close?.();
@@ -366,14 +480,119 @@ export class AcpSession {
     this.stopWatchdog();
     this.wsStream = null;
     if (killServer) stopServer().catch((e) => log.fail("acp.stop.stopServer", e));
-    // state уже closed; idle остаётся в status для UI до следующего start
+    // state is already closed; status stays "idle" for the UI until the next start
     this.sessionId = null;
     this.connection = null;
   }
 
-  /** Смена чата: закрыть WS, НЕ убивая goose serve (иначе — «ACP connection closed» у новой сессии) */
+  /** Chat switch: close the WS WITHOUT killing goose serve (else the new session gets "ACP connection closed") */
   disconnect() {
     this.stop(false);
+  }
+
+  /** Effective GooseMode for permission decisions (session state first, config.yaml fallback). */
+  private permissionMode(): string {
+    if (this.currentModeId) return this.currentModeId;
+    try {
+      return getGooseMode();
+    } catch (e) {
+      log.debug("acp.permission.mode-fallback", e instanceof Error ? e.message : String(e));
+      return "approve"; // config.yaml unreadable → documented GooseMode fallback (policy unchanged)
+    }
+  }
+
+  /**
+   * P0 security: incoming session/request_permission is NEVER silently allowed.
+   * Every request is logged (audit trail: acp.permission.request). Decision order:
+   *  1. explicit Handlers.onRequestPermission (UI dialog) — its choice wins;
+   *     no/invalid choice denies;
+   *  2. without a handler only GooseMode "auto" auto-allows (explicit opt-in);
+   *  3. otherwise deny (reject_once option, falling back to cancelled).
+   */
+  private async handlePermissionRequest(params: Record<string, unknown>): Promise<PermissionOutcome> {
+    const p = params as {
+      sessionId?: unknown;
+      toolCall?: { toolCallId?: unknown; name?: unknown; title?: unknown; kind?: unknown };
+      options?: Array<{ optionId: string; name?: string; kind?: string }>;
+    };
+    const options = Array.isArray(p.options) ? p.options : [];
+    const toolCallId = String(p.toolCall?.toolCallId ?? "");
+    const toolName = String(p.toolCall?.name ?? p.toolCall?.title ?? p.toolCall?.kind ?? "unknown");
+    const mode = this.permissionMode();
+    log.warn(
+      "acp.permission.request",
+      `tool=${toolName} call=${toolCallId || "-"} session=${String(p.sessionId ?? this.sessionId ?? "-")} mode=${mode} options=${options.map((o) => o.kind ?? o.optionId).join(",") || "-"}`,
+    );
+
+    const deny = (reason: string): PermissionOutcome => {
+      log.warn("acp.permission.deny", `tool=${toolName} mode=${mode} reason=${reason}`);
+      const reject =
+        options.find((o) => o.kind === "reject_once") ?? options.find((o) => o.kind === "reject_always");
+      return reject
+        ? { outcome: { outcome: "selected", optionId: reject.optionId } }
+        : { outcome: { outcome: "cancelled" } };
+    };
+
+    // 1) UI handler (if wired) makes the final call.
+    if (this.handlers.onRequestPermission) {
+      let selected: string | null = null;
+      try {
+        selected = await this.handlers.onRequestPermission({
+          sessionId: (typeof p.sessionId === "string" && p.sessionId) || this.sessionId,
+          toolCallId,
+          toolName,
+          mode,
+          options: options.map((o) => ({ optionId: o.optionId, name: o.name ?? "", kind: o.kind ?? "" })),
+        });
+      } catch (e) {
+        log.warn("acp.permission.handler-error", `tool=${toolName} ${e instanceof Error ? e.message : String(e)}`);
+        selected = null;
+      }
+      if (selected && options.some((o) => o.optionId === selected)) {
+        log.warn("acp.permission.grant", `tool=${toolName} option=${selected} via=ui`);
+        return { outcome: { outcome: "selected", optionId: selected } };
+      }
+      return deny("ui-no-selection");
+    }
+
+    // 2) No handler: auto-allow ONLY in the explicit auto mode.
+    if (mode === "auto") {
+      const allow = options.find((o) => o.kind === "allow_once") ?? options.find((o) => o.kind === "allow_always");
+      if (allow) {
+        log.warn("acp.permission.auto-allow", `tool=${toolName} option=${allow.optionId} mode=auto`);
+        return { outcome: { outcome: "selected", optionId: allow.optionId } };
+      }
+      return deny("no-allow-option");
+    }
+
+    // 3) Secure default: no explicit confirmation path → block.
+    return deny("no-ui-handler");
+  }
+
+  /** Push GOOSE_MODE from config.yaml onto the live session (goose 1.52 session/set_mode). */
+  private async pushConfigMode(): Promise<void> {
+    if (!this.connection || !this.sessionId) return;
+    let mode: string;
+    try {
+      mode = getGooseMode();
+    } catch (e) {
+      log.debug("acp.mode.config-read", e instanceof Error ? e.message : String(e));
+      return;
+    }
+    if (!mode || mode === this.currentModeId) return;
+    await this.applyModeToSession(mode);
+  }
+
+  /** Set the live session mode via ACP session/set_mode; failures are logged, never fatal. */
+  private async applyModeToSession(mode: string): Promise<void> {
+    if (this.isClosed || !this.connection || !this.sessionId) return;
+    try {
+      await this.connection.agent.request("session/set_mode", { sessionId: this.sessionId, modeId: mode });
+      this.currentModeId = mode;
+      log.info("acp.mode.set", `session=${this.sessionId} mode=${mode}`);
+    } catch (e) {
+      log.warn("acp.mode.set.failed", `mode=${mode} ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   private handleSessionUpdate(u: Record<string, any>) {
@@ -401,10 +620,10 @@ export class AcpSession {
         break;
       }
       case "user_message_chunk": {
-        // История: goose replay'ит сообщения пользователя ТОЛЬКО этим типом —
-        // без обработки «мои сообщения» исчезали после переключения чата/рестарта.
-        // В живую goose НЕ шлёт user_message_chunk (проверено: локальный echo в
-        // prompt() остаётся единственным источником) — дублей не будет.
+        // History: goose replays user messages ONLY via this update type —
+        // without handling it "my messages" vanished after a chat switch/restart.
+        // Live goose does NOT send user_message_chunk (verified: the local echo in
+        // prompt() remains the only source) — so no duplicates appear.
         const uc = up.content;
         const utext = typeof uc === "object" && uc ? String(uc.text ?? "") : String(uc ?? "");
         if (utext) this.handlers.onMessage({ id: String(up.messageId ?? id), role: "user", text: utext });
@@ -413,14 +632,21 @@ export class AcpSession {
       case "usage_update": {
         const used = typeof up.used === "number" ? up.used : null;
         const size = typeof up.size === "number" ? up.size : undefined;
-        if (used !== null) this.handlers.onUsage?.({ used, size });
+        if (used !== null) {
+          this.handlers.onUsage?.({ used, size });
+          // P2 telemetry: feed per-role usage ledger (never breaks the caller)
+          recordUsage({
+            session_id: this.sessionId ?? "-",
+            input_tokens: used,
+          });
+        }
         break;
       }
       case "tool_call": {
         const meta = (up._meta ?? {}) as { subagent_session_id?: string };
         const toolName = String(up.title ?? up.kind ?? "tool");
         const rawIn = up.rawInput;
-        // todo write → парсим контент в чек-лист правой панели (нативные галочки)
+        // todo write → parse content into the right-panel checklist (native checkboxes)
         if (/todo/i.test(toolName) && rawIn && typeof rawIn === "object") {
           const items = parseTodos(
             (rawIn as { content?: unknown }).content ?? (rawIn as { text?: unknown }).text,
@@ -437,12 +663,12 @@ export class AcpSession {
           toolStatus: up.status as ChatMessage["toolStatus"],
           subagentSessionId: meta?.subagent_session_id,
         });
-        // P6: событийный триггер rail — без ожидания poll
+        // P6: event-driven rail trigger — no need to wait for the poll
         if (meta?.subagent_session_id) this.handlers.onSubagentEvent?.(meta.subagent_session_id);
-        // ── автоконтекст субагенту: пути изображений + напоминание про delegate ──
-        // delegate передаёт ТОЛЬКО текст — image-блоки не доходят. Если в сессии
-        // есть staged-изображения, шлём субагенту follow-up с путями (session/prompt
-        // к его sessionId) — он увидит его следующим ходом и сможет read_image.
+        // ── auto-context for the subagent: image paths + delegate reminder ──
+        // delegate forwards TEXT ONLY — image blocks never arrive. If the session has
+        // staged images, send the subagent a follow-up with the paths (session/prompt
+        // to its sessionId) — it will see it on the next turn and can read_image.
         const subId = meta?.subagent_session_id;
         if (subId && /delegate|subagent/i.test(toolName) && this.sessionImagePaths.length > 0) {
           const ctx = `[Контекст от основной сессии]\nИзображения доступны на диске — открывай через read_image с точным путём:\n${this.sessionImagePaths
@@ -453,7 +679,7 @@ export class AcpSession {
               sessionId: subId,
               prompt: [{ type: "text", text: ctx }],
             })
-            .catch((e) => log.warn("acp.auto-context.subagent", `sub=${subId} ${e instanceof Error ? e.message : e}`)); // субагент мог уже завершиться
+            .catch((e) => log.warn("acp.auto-context.subagent", `sub=${subId} ${e instanceof Error ? e.message : e}`)); // the subagent may have already finished
         }
         break;
       }
@@ -463,22 +689,31 @@ export class AcpSession {
         const body = up.rawOutput?.content?.[0];
         if (typeof body === "object" && body && body.text !== undefined) text = String(body.text ?? "");
         else if (typeof up.rawOutput === "string") text = up.rawOutput;
-        // todo write возвращает обновлённый список в rawOutput — перепарсим (галочки ✅/—)
+        // todo write returns the updated list in rawOutput — reparse it (✅/— checkboxes)
         if (/todo/i.test(String((up as any).title ?? (up as any).kind ?? "")) && text) {
           const items = parseTodos(text);
           if (items.length) this.handlers.onTodo(items);
         }
-        // текст даём только когда он реально есть: spread с text:undefined ЗАТИРАЛ
-        // уже отрендеренный текст → «undefined is not an object (m.text.slice)» и крах рендера
+        // pass text only when it is actually present: spreading text:undefined OVERWROTE
+        // the already-rendered text → "undefined is not an object (m.text.slice)" and a render crash
         if (text !== undefined) patch.text = text;
-        // toolInput НЕ трогаем — он сохранён при tool_call и не должен затираться output'ом
+        // toolInput is NOT touched — it was saved at tool_call and must not be clobbered by output
         this.handlers.onUpdateMessage(String(up.toolCallId ?? ""), patch);
+        break;
+      }
+      case "current_mode_update": {
+        // Track goose mode changes (e.g. after session/set_mode) for permission policy.
+        const mode = String(up.currentModeId ?? "");
+        if (mode) {
+          this.currentModeId = mode;
+          log.info("acp.mode.update", `mode=${mode}`);
+        }
         break;
       }
       default: {
         const entries = up.plan?.entries ?? up.todos ?? (up as any).todos;
         if (Array.isArray(entries)) {
-          // plan-entries приезжают с «сырыми» строками («1. …», «# Заголовок», ✅) — чистим
+          // plan-entries arrive as raw lines ("1. …", "# Heading", ✅) — clean them up
           this.handlers.onTodo(
             entries
               .map((e: Record<string, any>) => ({
@@ -493,7 +728,7 @@ export class AcpSession {
   }
 }
 
-/** data URL → ACP image {data, mimeType}; null если не data: */
+/** data URL → ACP image {data, mimeType}; null when not a data: URL */
 export function dataUrlToImage(dataUrl: string): { data: string; mimeType: string } | null {
   const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
   if (!m) return null;
@@ -506,11 +741,11 @@ export interface SubagentRow {
   tokens: number;
   running: boolean;
 }
-/** Субагенты ИЕРАРХИЧЕСКИ: только дети parentId. Без parentId — пусто (иерархия, не плоский список). */
+/** Subagents HIERARCHICALLY: only children of parentId. Without parentId → empty (a hierarchy, not a flat list). */
 export const listSubagents = (parentId?: string | null): SubagentRow[] => {
   if (!parentId) return [];
-  // прямой запрос детей (listSubagentChildren), а НЕ filter по listSessions:
-  // тот обрезается LIMIT 100 и теряет детей старых сессий
+  // direct children query (listSubagentChildren), NOT a filter over listSessions:
+  // that one is capped by LIMIT 100 and loses children of old sessions
   const rows = listSubagentChildren(parentId);
   return rows
     .slice(0, 12)

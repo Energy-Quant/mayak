@@ -1,8 +1,7 @@
-// Auth — вкладка «Авторизация»: управление ключами появится позже (пустое состояние, GPUIX).
-// Значения API-ключей UI принципиально не показывает — goose хранит их в системном брелоке.
+// Auth — "Authorization" tab: key management comes later (empty state, GPUIX).
+// The UI never shows API key values — goose stores them in the system keyring.
 import { Icon } from "./Icon";
 import { fs, type WaveTheme } from "../tokens";
-import { log } from "../logger";
 
 export default function Auth(props: { t: WaveTheme }) {
   const t = props.t;

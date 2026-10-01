@@ -1,6 +1,6 @@
 /**
- * toolRender.tsx — структурированный рендер tool-call body (порт toolRender.ts без HTML).
- * В GPUIX нет dangerouslySetInnerHTML — возвращаем React-узлы (<text>/<div>).
+ * toolRender.tsx — structured rendering of tool-call bodies (port of toolRender.ts without HTML).
+ * GPUIX has no dangerouslySetInnerHTML — we return React nodes (<text>/<div>).
  */
 import type { ReactNode } from "react";
 import { parseTodos } from "../acp";
@@ -10,7 +10,7 @@ import { log } from "../logger";
 const clip = (s: string, n: number) =>
   s.length <= n ? s : s.slice(0, n).replace(/\s+\S*$/, "") + "…";
 
-/** Однострочный безопасный текст */
+/** Single-line safe text */
 const one = (s: string) => s.replace(/\\n/g, " ").replace(/\s+/g, " ").trim();
 
 function tryParse(raw: string): Record<string, unknown> | null {
@@ -36,7 +36,7 @@ export interface ToolTheme {
   border: string;
 }
 
-/** Чек-лист todo */
+/** Todo checklist */
 function TodoList({ content, raw, th }: { content?: string; raw: string; th: ToolTheme }) {
   const items = parseTodos(content ?? raw);
   if (!items.length) return null;
@@ -94,14 +94,14 @@ const KvRow = ({ k, v, th }: { k: string; v: string; th: ToolTheme }) => (
   </div>
 );
 
-/** Красивый рендер тела tool-call: JSON → чек-лист / бейджи / ключ-значение */
+/** Nicer render of a tool-call body: JSON → checklist / badges / key-value */
 export function ToolBody(props: { toolName: string; rawText: string; theme: ToolTheme }): ReactNode {
   const name = (props.toolName || "").toLowerCase();
   const t = (props.rawText ?? "").trim();
   const j = tryParse(t);
   const th = props.theme;
 
-  // todo write → чек-лист
+  // todo write → checklist
   if (/todo/.test(name)) {
     const content = j ? String(j.content ?? j.text ?? j.todos ?? "") : t;
     const list = <TodoList content={content} raw={t} th={th} />;
@@ -142,7 +142,7 @@ export function ToolBody(props: { toolName: string; rawText: string; theme: Tool
     }
   }
 
-  // read_image / файл → путь
+  // read_image / file → path
   if (/read_image|read.file|view.image|image/.test(name) && j) {
     const path = String(j.source ?? j.path ?? j.file ?? j.url ?? "");
     if (path) {
@@ -152,7 +152,7 @@ export function ToolBody(props: { toolName: string; rawText: string; theme: Tool
     }
   }
 
-  // shell / bash → команда
+  // shell / bash → command
   if (/shell|bash|exec|command|run/.test(name) && j) {
     const cmd = String(j.command ?? j.cmd ?? j.script ?? "");
     if (cmd) {
@@ -173,19 +173,19 @@ export function ToolBody(props: { toolName: string; rawText: string; theme: Tool
     }
   }
 
-  // write / edit / save → путь
+  // write / edit / save → path
   if (/write|edit|save|create/.test(name) && j) {
     const path = String(j.path ?? j.file ?? j.filename ?? "");
     if (path) return <text style={{ fontSize: fs.xs, color: th.cyan }}>📝 {one(path)}</text>;
   }
 
-  // load_skill / load → имя
+  // load_skill / load → name
   if (/load_skill|load\b/.test(name) && j) {
     const n = String(j.name ?? j.source ?? j.skill ?? "");
     if (n) return <Badge label={`⚙ ${one(n)}`} color={th.gold} th={th} />;
   }
 
-  // generic JSON → ключ: значение
+  // generic JSON → key: value
   if (j) {
     const keys = Object.keys(j).slice(0, 6);
     if (keys.length) {

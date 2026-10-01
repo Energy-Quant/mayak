@@ -1,8 +1,8 @@
 /**
- * Модульное хранилище последней открытой ACP-сессии.
- * Переживает remount ChatPage (переключения страниц) И рестарт процесса
- * (localStorage) — connect() делает session/load(lastSid): история не теряется,
- * список субагентов (listSubagents по parentId) остаётся.
+ * Module-level store of the last opened ACP session.
+ * Survives ChatPage remounts (page switches) AND process restarts
+ * (localStorage) — connect() calls session/load(lastSid): history is kept,
+ * the subagent list (listSubagents by parentId) stays.
  */
 const KEY = "mayak-last-sid";
 import { log } from "./logger";
@@ -17,13 +17,14 @@ try {
 
 export const chatSession = { lastSid: initial as string | null };
 
-/** Единственная точка записи: память + localStorage */
+/** Single write path: memory + localStorage */
 export function setLastSid(sid: string | null): void {
   chatSession.lastSid = sid;
   try {
     if (sid) globalThis.localStorage?.setItem(KEY, sid);
     else globalThis.localStorage?.removeItem(KEY);
-  } catch {
-    /* нет localStorage */
+  } catch (e) {
+    // persistence unavailable (private mode / storage quota) — memory copy still works
+    log.debug("chatSession.write", e instanceof Error ? e.message : String(e));
   }
 }

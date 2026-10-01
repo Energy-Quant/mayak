@@ -5,7 +5,7 @@
 //!
 //! Политика (байт-в-байт как guard.sh):
 //!   - goose/adhoc → allow
-//!   - oracle write/edit: ТОЛЬКО .pantheon/{plans,analysis}/*.md
+//!   - oracle/metis write/edit: ТОЛЬКО .pantheon/{plans,analysis}/*.md
 //!   - librarian write/edit: ТОЛЬКО .pantheon/digests/*.md
 //!   - shell (oracle/librarian): read-only whitelist, без ` $() & ;редиректов
 //!     глубокие проверки git/sqlite3/python/sed
@@ -140,6 +140,7 @@ fn resolve_role(sid: &str) -> String {
                     let title = v["title"].as_str().unwrap_or("");
                     let role = match title {
                         "Agent: oracle" | "Oracle Consultation" => "oracle",
+                        "Agent: metis" | "Metis Critique" => "metis",
                         "Agent: librarian" | "Librarian Research" => "librarian",
                         "Agent: pantheon-conductor" | "Agent: goose" => "goose",
                         _ => "",
@@ -151,6 +152,9 @@ fn resolve_role(sid: &str) -> String {
                 // [PANTHEON:*] тег
                 if rj.contains("[PANTHEON:oracle]") {
                     return "oracle".into();
+                }
+                if rj.contains("[PANTHEON:metis]") {
+                    return "metis".into();
                 }
                 if rj.contains("[PANTHEON:librarian]") {
                     return "librarian".into();
@@ -188,7 +192,7 @@ fn block(reason: &str, sid: &str, tool: &str) -> ! {
 fn check_write(path: &str, role: &str, sid: &str, tool: &str) {
     let p = path;
     let re_ok = match role {
-        "oracle" => {
+        "oracle" | "metis" => {
             (p.contains("/.pantheon/plans/") || p.contains("/.pantheon/analysis/"))
                 && p.ends_with(".md")
                 && !p.contains("/..")

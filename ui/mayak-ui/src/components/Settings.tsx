@@ -1,8 +1,8 @@
 /**
- * Settings — 9 вкладок: Модели | Пользовательский интерфейс | Чат | Внешний вид |
- * Программы | Клавиатура | Авторизация | Приложение | Состояние.
- * Порт Settings.tsx (480 строк, Tauri/CSS) → GPUIX 0.10 (style-объекты, без DOM).
- * Toggle — локальная копия: НЕ импортируем ./Extensions (чужой файл не трогаем).
+ * Settings — 9 tabs: Models | User interface | Chat | Appearance |
+ * Prompts | Keyboard | Authorization | App | State.
+ * Port of Settings.tsx (480 lines, Tauri/CSS) → GPUIX 0.10 (style objects, no DOM).
+ * Toggle is a local copy: we do NOT import ./Extensions (never touch that file).
  */
 import { useEffect, useState, type ReactNode } from "react";
 import PantheonPanel from "./PantheonPanel";
@@ -48,17 +48,17 @@ const THEMES: [string, string][] = [
   ["dark", "Закат — ветер и вода"],
 ];
 
-/* Скопировано из легаси — GOOSE_MODE: id, подпись, описание */
+/* Copied from legacy — GOOSE_MODE: id, label, description */
 const MODES: [string, string, string][] = [
   ["auto", "Автономный", "Полное выполнение задач: файлы, запуски, расширения, создание и управление файлами"],
   ["approve", "Вручную", "Все действия, расширения и изменения файлов будут требовать подтверждения человеком"],
-  ["chat", "Утверждать", "Минимально проверяет, какие действия требуют подтверждения, исходя из уровня риска"],
-  ["chat_only", "Планировать", "Разговор с генерацией и представлением без выполнения или принятия решений"],
+  ["smart_approve", "Утверждать", "Минимально проверяет, какие действия требуют подтверждения, исходя из уровня риска"],
+  ["chat", "Чат", "Разговор, генерация и планы без выполнения: инструменты не вызываются"],
 ];
 
 const THEME_KEY = "mayak-theme";
 
-/** Текущая тема из localStorage: auto|light|dark (App читает тот же ключ). */
+/** Current theme from localStorage: auto|light|dark (App reads the same key). */
 function readThemeMode(): string {
   const v = globalThis.localStorage?.getItem(THEME_KEY);
   return v === "light" || v === "dark" ? v : "auto";
@@ -69,7 +69,7 @@ function themeShort(mode: string): string {
   return mode === "light" ? "Светлая" : "Тёмная";
 }
 
-/* ── базовые примитивы (карточка, кнопка, чип, ошибка, toggle, radio-строка) ── */
+/* ── base primitives (card, button, chip, error, toggle, radio row) ── */
 
 function ErrBox(props: { t: WaveTheme; msg: string }) {
   if (!props.msg) return null;
@@ -165,7 +165,7 @@ function Btn(props: {
   );
 }
 
-/** Недействующий чип (паритет <button> без обработчика в легаси). */
+/** Inert chip (parity with the handler-less <button> in legacy). */
 function Chip(props: { t: WaveTheme; label: string }) {
   const t = props.t;
   return (
@@ -189,7 +189,7 @@ function Chip(props: { t: WaveTheme; label: string }) {
   );
 }
 
-/** Локальный Toggle (копия из Extensions.tsx, переписанная на GPUIX). */
+/** Local Toggle (copy of Extensions.tsx, rewritten for GPUIX). */
 function Toggle(props: { t: WaveTheme; checked: boolean; onChange: (v: boolean) => void }) {
   const t = props.t;
   return (
@@ -224,7 +224,7 @@ function Toggle(props: { t: WaveTheme; checked: boolean; onChange: (v: boolean) 
   );
 }
 
-/** Строка-радио (легаси <label><input type="radio"> → свой кружок). */
+/** Radio row (legacy <label><input type="radio"> → custom dot). */
 function RadioRow(props: {
   t: WaveTheme;
   label: string;
@@ -293,7 +293,7 @@ function ToggleCard(props: { t: WaveTheme; title: string; desc: string; on?: boo
   );
 }
 
-/* ── страница ── */
+/* ── page ── */
 
 export function Settings(props: {
   t: WaveTheme;
@@ -368,7 +368,7 @@ export function Settings(props: {
   );
 }
 
-/* ── Модели ── */
+/* ── Models ── */
 
 function ModelsTab(props: { t: WaveTheme }) {
   const t = props.t;
@@ -462,7 +462,7 @@ function ModelsTab(props: { t: WaveTheme }) {
   );
 }
 
-/* ── Пользовательский интерфейс ── */
+/* ── User interface ── */
 
 function UiTab(props: { t: WaveTheme }) {
   const t = props.t;
@@ -558,7 +558,7 @@ function UiTab(props: { t: WaveTheme }) {
   );
 }
 
-/* ── Чат ── */
+/* ── Chat ── */
 
 function ChatTab(props: { t: WaveTheme }) {
   const t = props.t;
@@ -699,7 +699,7 @@ function StylesCard(props: { t: WaveTheme }) {
   );
 }
 
-/* ── Внешний вид ── */
+/* ── Appearance ── */
 
 function AppearanceTab(props: {
   t: WaveTheme;
@@ -743,7 +743,7 @@ function AppearanceTab(props: {
   );
 }
 
-/* ── Программы: промпты goose ── */
+/* ── Prompts: goose prompts ── */
 
 function ProgramsTab(props: { t: WaveTheme }) {
   const t = props.t;
@@ -764,7 +764,7 @@ function ProgramsTab(props: { t: WaveTheme }) {
       const exists = (list ?? files).find((f) => f.name === name)?.exists ?? true;
       setStatus(exists ? "" : "Файл не создан — «Сохранить» создаст его");
     } catch (e) {
-      // имя файла валидируется на сервере API (whitelist PROMPT_FILES)
+      // the filename is validated server-side (PROMPT_FILES whitelist)
       setErr(String(e).slice(0, 120));
     }
   };
@@ -887,7 +887,7 @@ function ProgramsTab(props: { t: WaveTheme }) {
   );
 }
 
-/* ── Приложение ── */
+/* ── App ── */
 
 function AppTab(props: {
   t: WaveTheme;

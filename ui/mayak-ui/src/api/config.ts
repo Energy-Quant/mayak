@@ -1,7 +1,7 @@
 /**
- * api/config.ts — порт config.rs + цепочки из pantheon.rs (TOML) на TS.
- * Запись yaml/toml — с бэкапом (паритет). Путь конфига можно переопределить
- * аргументом только для тестов (фронт не передаёт — канонический путь).
+ * api/config.ts — port of config.rs + chains from pantheon.rs (TOML) to TS.
+ * yaml/toml writes keep a backup (parity). The config path can be overridden
+ * by argument for tests only (the frontend never passes it — canonical path).
  */
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
@@ -25,7 +25,7 @@ function backupAndWrite(path: string, raw: string, out: string, suffix: string):
   writeFileSync(path, out);
 }
 
-// ── Сводка конфига (get_config_summary) ──
+// ── Config summary (get_config_summary) ──
 
 export interface ExtensionEntry {
   name: string;
@@ -70,7 +70,7 @@ export function readSummary(cfgPath?: string): GooseConfigSummary {
   };
 }
 
-/** JSON-формат команды get_config_summary (без providers — как в main.rs) */
+/** JSON shape of the get_config_summary command (no providers — as in main.rs) */
 export function getConfigSummary(cfgPath?: string): Omit<GooseConfigSummary, "providers"> {
   const s = readSummary(cfgPath);
   return {
@@ -103,19 +103,43 @@ export function setActiveModel(provider: string, model: string, cfgPath?: string
   backupAndWrite(path, raw, stringifyYaml(v), "yaml.bak-mayak");
 }
 
-const GOOSE_MODES = ["auto", "approve", "manual", "chat", "chat_only"];
+/**
+ * Real goose 1.52 enum GooseMode — verified via `strings` on the binary
+ * (GooseModeapprovesmart_approve / configure screen Auto·Approve·Smart Approve·Chat).
+ * There is no "manual" or "chat_only" variant: unknown values fail with
+ * "Failed to parse GooseMode variant".
+ */
+export const GOOSE_MODES = ["auto", "approve", "smart_approve", "chat"] as const;
+
+/** Current GOOSE_MODE from config.yaml (readSummary defaults to "auto"). */
+export function getGooseMode(cfgPath?: string): string {
+  return readSummary(cfgPath).goose_mode;
+}
+
+/**
+ * Live-session hook: acp.ts subscribes here so a mode change from Settings
+ * reaches the running session via ACP session/set_mode, not only config.yaml
+ * (which only affects sessions started later).
+ */
+export type GooseModeListener = (mode: string) => void;
+let gooseModeListener: GooseModeListener | null = null;
+export function setGooseModeListener(fn: GooseModeListener | null): void {
+  gooseModeListener = fn;
+}
 
 export function setGooseMode(mode: string, cfgPath?: string): void {
-  if (!GOOSE_MODES.includes(mode)) throw new AppError(E.CONFIG_BAD_MODE, `неизвестный режим: ${mode}`, { context: { mode } });
+  if (!(GOOSE_MODES as readonly string[]).includes(mode)) throw new AppError(E.CONFIG_BAD_MODE, `неизвестный режим: ${mode}`, { context: { mode } });
   const path = cfgPath ?? configPath();
   const raw = readCfg(path);
   const v = parseYaml(raw) as YamlObj;
   v.GOOSE_MODE = mode;
-  // паритет config.rs: set_goose_mode без бэкапа
+  // parity with config.rs: set_goose_mode writes without a backup
   writeFileSync(path, stringifyYaml(v));
+  // Only canonical writes (UI) notify the live session; test paths stay silent.
+  if (!cfgPath) gooseModeListener?.(mode);
 }
 
-// ── Программы: промпты ~/.config/goose/prompts ──
+// ── Prompts: ~/.config/goose/prompts ──
 
 export const PROMPT_FILES = [
   "system.md",
@@ -162,7 +186,7 @@ export function savePromptFile(name: string, content: string): void {
   writeFileSync(p, content);
 }
 
-// ── Рецепты: ~/.config/goose/recipes/*.yaml (паритет list_recipes) ──
+// ── Recipes: ~/.config/goose/recipes/*.yaml (parity with list_recipes) ──
 
 export interface RecipeRow {
   file: string;
@@ -200,7 +224,7 @@ export function listRecipes(): RecipeRow[] {
   return out;
 }
 
-/** Открыть HTML-приложение goose (xdg-open) — паритет open_app */
+/** Open a goose HTML app (xdg-open) — parity with open_app */
 export function openApp(name: string): void {
   const path = join(homedir(), `.local/share/goose/apps/${name}.html`);
   if (!existsSync(path)) throw new AppError(E.CONFIG_NOT_FOUND, `${name} не найден`, { context: { name, path } });
@@ -208,7 +232,7 @@ export function openApp(name: string): void {
   if (r.error) throw new AppError(E.CONFIG_WRITE, String(r.error), { context: { name } });
 }
 
-// ── Приложение: пути и лимиты ──
+// ── App: paths and limits ──
 
 export interface ConfigPaths {
   config_path: string;
@@ -244,7 +268,7 @@ export function openConfigDir(): void {
   spawnSync("xdg-open", [join(configPath(), "..")], { stdio: "ignore" });
 }
 
-// ── Цепочки моделей: pantheon.toml (роей из pantheon.rs) ──
+// ── Model chains: pantheon.toml (ported from pantheon.rs) ──
 
 export type Role = "goose" | "oracle" | "librarian";
 export const ROLES: Role[] = ["goose", "oracle", "librarian"];
@@ -281,7 +305,7 @@ export function getAgentChains(tomlPath?: string): AgentChainJson[] {
   return out;
 }
 
-/** Роль → runtime-файлы (frontmatter агента + recipe). goose не имеет md/recipe. */
+/** Role → runtime files (agent frontmatter + recipe). goose has no md/recipe. */
 const ROLE_RUNTIME: Record<string, { agent?: string; recipe?: string }> = {
   goose: {},
   oracle: { agent: "oracle.md", recipe: "oracle-consult.yaml" },
@@ -289,21 +313,21 @@ const ROLE_RUNTIME: Record<string, { agent?: string; recipe?: string }> = {
 };
 
 /**
- * P1-автосинк: смена модели в UI обязана дойти до delegate.
- * Приоритет модели в goose: recipe.settings.goose_model → frontmatter → override.
- * Пишем ОБА, иначе старая модель продолжает работать (урок glm-5.3→mimo).
+ * P1 auto-sync: a model change in the UI must reach the delegate.
+ * Model precedence in goose: recipe.settings.goose_model → frontmatter → override.
+ * Write BOTH, otherwise the old model keeps working (lesson glm-5.3→mimo).
  */
 function syncModelToRuntime(role: string, step: ChainStep): void {
   const rt = ROLE_RUNTIME[role];
   if (!rt) return;
 
-  // 1. frontmatter агента ~/.agents/agents/<agent>.md
+  // 1. agent frontmatter ~/.agents/agents/<agent>.md
   if (rt.agent) {
     const agentPath = join(homedir(), ".agents/agents", rt.agent);
     try {
       if (existsSync(agentPath)) {
         let text = readFileSync(agentPath, "utf8");
-        // frontmatter-блок: от первой строки --- до второй --- 
+        // frontmatter block: from the first --- line to the second --- 
         const fmMatch = text.match(/^---\n([\s\S]*?)\n---/);
         if (fmMatch && /(^|\n)model:\s*[^\n]+/.test(fmMatch[1])) {
           const fmNew = fmMatch[1].replace(/(^|\n)model:\s*[^\n]+/, `$1model: ${step.model}`);
@@ -326,7 +350,7 @@ function syncModelToRuntime(role: string, step: ChainStep): void {
       if (existsSync(recipePath)) {
         let text = readFileSync(recipePath, "utf8");
         const before = text;
-        // goose_model: <value> внутри settings
+        // goose_model: <value> inside settings
         text = text.replace(/^(\s*goose_model:)\s*[^\n]+/m, `$1 ${step.model}`);
         text = text.replace(/^(\s*goose_provider:)\s*[^\n]+/m, `$1 ${step.provider}`);
         if (text !== before) {
@@ -356,9 +380,9 @@ export function saveAgentChain(role: string, chain: AgentChainToml, tomlPath?: s
   const tmp = `${path}.tmp`;
   writeFileSync(tmp, ser);
   renameSync(tmp, path);
-  // P1: автосинк — модель должна дойти до delegate (frontmatter + recipe)
+  // P1: auto-sync — the model must reach the delegate (frontmatter + recipe)
   syncModelToRuntime(role, chain.primary);
-  // аудит в kv (паритет pantheon.rs)
+  // audit in kv (parity with pantheon.rs)
   kvSet(
     `chain-edit:${Math.floor(Date.now() / 1000)}`,
     `${role}: primary=${chain.primary.provider}/${chain.primary.model} fallbacks=${JSON.stringify(chain.fallbacks)}`,

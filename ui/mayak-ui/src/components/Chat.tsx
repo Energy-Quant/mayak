@@ -1,11 +1,11 @@
 /**
- * Chat — ACP-чат на GPUIX (порт Chat.tsx rev14 без Tauri/DOM/webview).
- * Ключи GPUIX: <virtual-list alignment="bottom" followTail>, <markdown> host,
- * expandable preview+Show more (без inner scroll), pointer-capture resize.
- * Вложения (Ctrl+V/DnD/picker) — шаг 8; события заменены на пропсы App.
+ * Chat — ACP chat on GPUIX (port of Chat.tsx rev14 without Tauri/DOM/webview).
+ * GPUIX specifics: <virtual-list alignment="bottom" followTail>, <markdown> host,
+ * expandable preview+Show more (no inner scroll), pointer-capture resize.
+ * Attachments (Ctrl+V/DnD/picker) — step 8; events replaced by App props.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useGpuix } from "@gpuix/react";
+import { useGpuix, type EventPayload, type PublicInstance } from "@gpuix/react";
 import {
   AcpSession,
   listSubagents,
@@ -83,7 +83,7 @@ function statusLabelBase(s: string) {
   );
 }
 
-/** Свёрнутое/раскрытое тело: preview + Show more (outer list скроллит) */
+/** Collapsed/expanded body: preview + Show more (the outer list scrolls) */
 function ExpandableBody(props: {
   children: ReactNode;
   t: WaveTheme;
@@ -159,7 +159,7 @@ function CopyBtn(props: { text: string; t: WaveTheme; light?: boolean }) {
   );
 }
 
-/** Плавная пульсация (sin): active → opacity 0.35..1, иначе 1 */
+/** Smooth pulse (sin): active → opacity 0.35..1, otherwise 1 */
 function usePulse(active: boolean, periodMs = 1100): number {
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -173,7 +173,7 @@ function usePulse(active: boolean, periodMs = 1100): number {
 }
 
 const SPIN_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
-/** Braille-спиннер для долгих инструментов */
+/** Braille spinner for long-running tools */
 function useSpinner(active: boolean): string {
   const [i, setI] = useState(0);
   useEffect(() => {
@@ -209,7 +209,7 @@ const MessageItem = React.memo(function MessageItem(props: {
   );
 
   const copySrc = m.role === "tool" ? (m.toolInput ?? m.text ?? "") : (m.text ?? "");
-  // thinking «в работе» = стрим + это последнее (вспыхивает только свежая цепочка)
+  // thinking "in progress" = streaming + it is last (only the fresh chain flashes)
   const thinkingActive =
     m.role === "thinking" && props.streaming && !!m.chunk && props.isLast;
   const toolActive =
@@ -438,11 +438,11 @@ const MessageItem = React.memo(function MessageItem(props: {
 export function ChatPage(props: {
   railWidth: number;
   onRailWidth: (w: number) => void;
-  /** ширина контента (окно − сайдбар), px */
+  /** content width (window − sidebar), px */
   widthPx: number;
-  /** инкремент = команда «Новый чат» (сброс + чистая session/new) */
+  /** increment = "New chat" command (reset + fresh session/new) */
   newChatToken: number;
-  /** сообщает App id открытой/созданной сессии (подсветка в сайдбаре) */
+  /** reports the opened/created session id to App (sidebar highlight) */
   onSessionChange?: (id: string) => void;
   t: WaveTheme;
   onOpenSubagent: (id: string) => void;
@@ -468,18 +468,18 @@ export function ChatPage(props: {
   const [error, setError] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  /** выбранная в «Цепочках» модель goose — для плашки в топбаре */
+  /** goose model selected in "Chains" — for the topbar badge */
   const [gooseModel, setGooseModel] = useState({ provider: "opencode_go", model: "glm-5.3-flash" });
   const { renderer } = useGpuix();
   const MAX_ATTACH = 8;
   const sessionRef = useRef<AcpSession | null>(null);
   const startedRef = useRef(false);
-  /** id последней успешно открытой сессии — для авто-reconnect при обрыве WS */
+  /** id of the last successfully opened session — for auto-reconnect after a WS drop */
   const lastSidRef = useRef<string | null>(null);
   /**
-   * sid в React-state: смена сессии должна ПЕРЕЗАПУСТИТЬ poll-эффект субагентов.
-   * lastSidRef (ref) ререндер не даёт — эффект зависел от messages/status и мог
-   * остаться с опросом старой/пустой сессии («окно субагентов исчезло»).
+   * sid in React state: a session switch must RESTART the subagent poll effect.
+   * lastSidRef (ref) gives no re-render — the effect depended on messages/status and could
+   * keep polling the old/empty session ("the subagent panel vanished").
    */
   const [sid, setSid] = useState<string | null>(null);
   const applySid = (id: string | null) => {
@@ -493,7 +493,7 @@ export function ChatPage(props: {
       onMessage: (m) =>
         setMessages((ms) => {
           const last = ms[ms.length - 1];
-          // Стрим: каждый chunk — продолжение предыдущего (роль та же, chunk=true)
+          // Stream: every chunk continues the previous one (same role, chunk=true)
           if ((m.role === "agent" || m.role === "thinking") && last?.role === m.role && last.chunk) {
             return [...ms.slice(0, -1), { ...last, text: last.text + m.text }];
           }
@@ -507,8 +507,8 @@ export function ChatPage(props: {
       onUsage: (u) =>
         setCtx((c) => ({ ...c, tokens: u.used, limit: u.size ?? c.limit })),
       onSubagentEvent: () => {
-        // P6: событийное обновление rail (tool_call с subagent_session_id)
-        // lastSidRef вместо sid — замыкание makeSession может быть stale
+        // P6: event-driven rail update (tool_call with subagent_session_id)
+        // lastSidRef instead of sid — the makeSession closure may be stale
         try {
           const s = lastSidRef.current;
           if (s) setSubagents(listSubagents(s));
@@ -533,12 +533,12 @@ export function ChatPage(props: {
     try {
       if (chatSession.lastSid) {
         try {
-          await s.load(chatSession.lastSid); // история replay'ится (start(loadId))
+          await s.load(chatSession.lastSid); // history replays via start(loadId)
         } catch (e) { log.debug("ui.error", String(e));
-          // sid протух — fallback: новая сессия (session/new)
+          // stale sid — fallback: new session (session/new)
           s.stop(false);
-          // ГОНКА: пока грузилась lastSid, pendingSession мог уже установить
-          // свою сессию в sessionRef — не перетираем её пустой session/new
+          // RACE: while lastSid was loading, pendingSession may have already put
+          // its own session into sessionRef — do not overwrite it with an empty session/new
           if (sessionRef.current !== s) return;
           const s2 = makeSession();
           sessionRef.current = s2;
@@ -561,7 +561,7 @@ export function ChatPage(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // автоподключение
+  // auto-connect
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
@@ -570,17 +570,17 @@ export function ChatPage(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // открытие сессии из Истории/сайдбара (проп от App — без window-событий)
+  // open a session from History/sidebar (App prop — no window events)
   useEffect(() => {
     if (!props.pendingSession) return;
     const id = props.pendingSession;
     props.clearPending();
     const run = async () => {
-      sessionRef.current?.disconnect(); // сервер живёт — новый старт мгновенный (reuse)
+      sessionRef.current?.disconnect(); // the server stays up — the next start is instant (reuse)
       setMessages([]);
       setTodos(null);
       setSubagents([]);
-      applySid(null); // гасим poll ДО async-load: старый интервал успевал залить субагентов прошлой сессии
+      applySid(null); // stop the poll BEFORE async-load: the old interval could flood subagents of the previous session
       setError("");
       setStatus("starting");
       const s = makeSession();
@@ -592,7 +592,7 @@ export function ChatPage(props: {
           props.onSessionChange?.(s.id);
         }
       } catch (e) { log.debug("ui.error", String(e));
-        // sid протух — fallback: новая сессия (session/new), как в connect()
+        // stale sid — fallback: new session (session/new), same as in connect()
         s.stop(false);
         const s2 = makeSession();
         sessionRef.current = s2;
@@ -614,7 +614,7 @@ export function ChatPage(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.pendingSession]);
 
-  // модель goose из «Цепочек» (полл — смена в настройках подхватывается)
+  // goose model from "Chains" (polled — changes in settings are picked up)
   useEffect(() => {
     const load = () => {
       try {
@@ -622,7 +622,7 @@ export function ChatPage(props: {
         if (ch?.primary?.model)
           setGooseModel({ provider: ch.primary.provider, model: ch.primary.model });
       } catch (e) { log.debug("ui.error", String(e));
-        /* toml недоступен — оставляем прежнюю */
+        /* toml unavailable — keep the previous value */
       }
     };
     load();
@@ -630,7 +630,7 @@ export function ChatPage(props: {
     return () => clearInterval(iv);
   }, []);
 
-  // «Новый чат»: полный сброс + чистая session/new (lastSid=null)
+  // "New chat": full reset + fresh session/new (lastSid=null)
   useEffect(() => {
     if (!props.newChatToken) return;
     sessionRef.current?.disconnect();
@@ -661,7 +661,7 @@ export function ChatPage(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.newChatToken]);
 
-  // лимиты контекста + порог автосжатия
+  // context limits + auto-compress threshold
   useEffect(() => {
     const load = async () => {
       try {
@@ -680,15 +680,15 @@ export function ChatPage(props: {
           threshold: c?.goose_auto_compact_threshold ?? null,
         }));
       } catch (e) { log.debug("ui.error", String(e));
-        /* каталог недоступен — метр без limit */
+        /* catalog unavailable — meter without a limit */
       }
     };
     void load();
   }, []);
 
-  // субагенты: poll по sid (React-state). Зависимость от messages/status давала
-  // опрос ДО готовности sessionRef (sid=null → пусто) и не перезапускала интервал
-  // при смене сессии → «окно субагентов исчезало после переключения».
+  // subagents: poll by sid (React state). Depending on messages/status caused
+  // polling before sessionRef was ready (sid=null → empty) and did not restart the interval
+  // on session switch → "the subagent panel vanished after switching".
   useEffect(() => {
     if (!sid) {
       setCtx((c) => ({ ...c, tokens: 0 }));
@@ -697,20 +697,20 @@ export function ChatPage(props: {
     }
     const poll = () => {
       try {
-        // токены берём из usage_update (live); poll — только субагенты
+        // tokens come from usage_update (live); the poll only fetches subagents
         setSubagents(listSubagents(sid));
       } catch (e) { log.debug("ui.error", String(e));
-        /* тихо */
+        /* silent */
       }
     };
     poll();
-    // P6: poll = reconcilation каждые 15с (события — основной механизм)
+    // P6: poll = reconciliation every 15s (events are the primary mechanism)
     const iv = setInterval(poll, 15000);
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sid]);
 
-  /** Ингест OS-путей (drop / file picker): картинки → сжатие+staging, документы → путь */
+  /** Ingest OS paths (drop / file picker): images → compress+stage, documents → path */
   const ingestPaths = async (paths: string[]) => {
     for (const p of paths) {
       const name = p.split("/").pop() || "file";
@@ -754,12 +754,12 @@ export function ChatPage(props: {
     }
   };
 
-  /** DnD: событие приходит элементу ПОД КУРСОРОМ (не всплывает) — вешаем на все крупные зоны */
+  /** DnD: the event hits the element UNDER the cursor (it does not bubble) — attach to every large zone */
   const onDropPaths = (ev: { paths?: string[] }) => {
     if (ev.paths?.length) void ingestPaths(ev.paths);
   };
 
-  // Ctrl+V → нативный wl-paste (паритет keydown-пути legacy)
+  // Ctrl+V → native wl-paste (parity with the legacy keydown path)
   useEffect(() => {
     winKeys.chat = (e) => {
       if (e.key !== "v" || !e.modifiers?.ctrl || e.modifiers?.shift || e.modifiers?.alt) return;
@@ -786,7 +786,7 @@ export function ChatPage(props: {
           );
         }
       } catch (e) { log.debug("ui.error", String(e));
-        /* нет wl-clipboard / не картинка */
+        /* no wl-clipboard / not an image */
       }
     };
     return () => {
@@ -829,11 +829,11 @@ export function ChatPage(props: {
     try {
       await s.prompt(text, images.length ? images : undefined, paths.length ? paths : undefined);
     } catch (e) {
-      // чужая/мёртвая сессия после переключения — молчим (урок «ACP connection closed»)
+      // foreign/dead session after a switch — stay silent (lesson "ACP connection closed")
       if (sessionRef.current !== s) return;
       const msg = errText(e);
       if (/connection closed|stream is closed/i.test(msg) && lastSidRef.current) {
-        void reopenLast(); // обрыв WS → авто-reconnect с replay истории
+        void reopenLast(); // WS drop → auto-reconnect with history replay
       } else {
         setError(`Ошибка промпта: ${msg.slice(0, 200)}`);
       }
@@ -842,14 +842,14 @@ export function ChatPage(props: {
     }
   };
 
-  /** Авто-reconnect: переоткрыть последнюю сессию (история replay'ится goose) */
+  /** Auto-reconnect: reopen the last session (goose replays the history) */
   const reopenLast = async () => {
     const id = lastSidRef.current;
     if (!id) return;
     sessionRef.current?.disconnect();
     setError("");
     setStatus("starting");
-    // история replay'ится заново через session/load — старую чистим, иначе дубли
+    // history replays again via session/load — clear the old one, else duplicates
     setMessages([]);
     setTodos(null);
     setSubagents([]);
@@ -886,6 +886,84 @@ export function ChatPage(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [messages, t, props.onOpenSubagent, streaming],
   );
+
+  // --- Scroll-to-bottom button -------------------------------------------
+  // Host child count of <virtual-list>: message rows + the two streaming rows.
+  // Kept in a ref so scroll queries always compare against the live list.
+  const feedListRef = useRef<PublicInstance | null>(null);
+  const feedChildCountRef = useRef(0);
+  feedChildCountRef.current = messageRows.length + (streaming ? 2 : 0);
+  /** Last endIndex reported by the list's visibleRange event (scroll signal). */
+  const feedRangeEndRef = useRef<number | null>(null);
+  /** True while the feed shows its tail — drives the floating button. */
+  const [feedAtBottom, setFeedAtBottom] = useState(true);
+
+  /**
+   * Whether the feed is at the bottom of the list. Primary signal:
+   * getListScrollTop — `itemIndex == itemCount` is gpui's at-end sentinel
+   * (exact even while row heights are still estimates). Secondary: the
+   * visibleRange endIndex reaching the child count (fires on user scrolls).
+   */
+  const refreshFeedBottom = useCallback(() => {
+    const count = feedChildCountRef.current;
+    let anchorAtEnd: boolean | null = null;
+    const id = feedListRef.current?.id;
+    if (id != null && renderer) {
+      try {
+        const top = renderer.getListScrollTop?.(id);
+        if (top && top.length > 0) anchorAtEnd = top[0] >= count;
+      } catch (e) {
+        log.debug("ui.scroll", String(e));
+      }
+    }
+    const rangeAtEnd = feedRangeEndRef.current != null && feedRangeEndRef.current >= count;
+    const atEnd = anchorAtEnd == null ? rangeAtEnd : anchorAtEnd || rangeAtEnd;
+    setFeedAtBottom((prev) => (prev === atEnd ? prev : atEnd));
+  }, [renderer]);
+
+  const handleFeedVisibleRange = useCallback(
+    (ev: EventPayload) => {
+      if (typeof ev.endIndex === "number") feedRangeEndRef.current = ev.endIndex;
+      refreshFeedBottom();
+    },
+    [refreshFeedBottom],
+  );
+
+  /** Wheel/scroll events bubbling from the feed re-check the anchor. */
+  const handleFeedScroll = useCallback(() => {
+    refreshFeedBottom();
+  }, [refreshFeedBottom]);
+
+  /**
+   * Jump to the newest message. scrollToItem anchors on the last row: the
+   * requested offset lies beyond the max scroll offset, so gpui clamps it to
+   * the very end of the list. The item scroll is queued for the next render,
+   * so a delayed verification falls back to a pixel scroll clamped at the
+   * content end if the anchor did not reach the tail.
+   */
+  const scrollFeedToEnd = useCallback(() => {
+    setFeedAtBottom(true);
+    const id = feedListRef.current?.id;
+    if (id == null || !renderer) return;
+    try {
+      renderer.scrollToItem?.(id, Math.max(0, feedChildCountRef.current - 1));
+    } catch (e) {
+      log.debug("ui.scroll", String(e));
+    }
+    setTimeout(() => {
+      try {
+        const cid = feedListRef.current?.id;
+        if (cid == null) return;
+        const top = renderer.getListScrollTop?.(cid);
+        if (!top || top[0] < feedChildCountRef.current) {
+          renderer.scrollTo?.(cid, 0, -1_000_000);
+        }
+        refreshFeedBottom();
+      } catch (e) {
+        log.debug("ui.scroll", String(e));
+      }
+    }, 90);
+  }, [renderer, refreshFeedBottom]);
 
   return (
     <div
@@ -981,7 +1059,7 @@ export function ChatPage(props: {
           ) : null}
         </div>
 
-        {/* тело: welcome или виртуальный список */}
+        {/* body: welcome or the virtual list */}
         {!hasConversation ? (
           <div style={{display: "flex", width: "100%", flexDirection: "column", flexGrow:1, justifyContent: "center", alignItems: "center", padding: sp[5] }} onFileDrop={onDropPaths}>
             <div style={{display: "flex", flexDirection: "column",  alignItems: "center", gap: 6 }}>
@@ -1026,7 +1104,11 @@ export function ChatPage(props: {
             </div>
           </div>
         ) : (
-          <div style={{display: "flex", width: "100%", flexDirection: "column", flexGrow: 1, minHeight: 0, padding: sp[5] }} onFileDrop={onDropPaths}>
+          <div
+            style={{display: "flex", width: "100%", flexDirection: "column", flexGrow: 1, minHeight: 0, padding: sp[5], position: "relative" }}
+            onFileDrop={onDropPaths}
+            onScroll={handleFeedScroll}
+          >
             {error ? (
               <div
                 style={{
@@ -1042,10 +1124,12 @@ export function ChatPage(props: {
               </div>
             ) : null}
             <virtual-list
+              ref={feedListRef}
               alignment="bottom"
               followTail
               estimatedItemHeight={180}
               overdraw={240}
+              onVisibleRange={handleFeedVisibleRange}
               style={{display: "flex", flexDirection: "column",  flexGrow: 1, minHeight: 0, width: "100%" }}
             >
               {messageRows}
@@ -1074,10 +1158,43 @@ export function ChatPage(props: {
                 </div>
               ) : null}
             </virtual-list>
+            {/* Floating scroll-to-bottom: overlay on the feed (no nested scroll parent). */}
+            {!feedAtBottom ? (
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: sp[2],
+                  display: "flex",
+                  flexDirection: "row",
+                  justifyContent: "center",
+                }}
+              >
+                <div
+                  onClick={scrollFeedToEnd}
+                  style={{
+                    display: "flex",
+                    width: 34,
+                    height: 34,
+                    borderRadius: 17,
+                    justifyContent: "center",
+                    alignItems: "center",
+                    backgroundColor: t.surface,
+                    borderWidth: 1,
+                    borderColor: t.border,
+                    cursor: "pointer",
+                    hover: { backgroundColor: t.glass, borderColor: t.magenta },
+                  }}
+                >
+                  <text style={{ fontSize: fs.lg, color: t.magenta, fontWeight: 700 }}>↓</text>
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
 
-        {/* вложения */}
+        {/* attachments */}
         {attachments.length > 0 && (
           <div
             onFileDrop={onDropPaths}
@@ -1132,7 +1249,7 @@ export function ChatPage(props: {
             ))}
           </div>
         )}
-        {/* поле ввода */}
+        {/* input field */}
         <div
           style={{display: "flex",
             width: "100%",
@@ -1237,7 +1354,7 @@ export function ChatPage(props: {
         <UsageBar t={t} refreshKey={messages.length} />
       </div>
 
-      {/* правая панель: задачи + субагенты */}
+      {/* right panel: todos + subagents */}
       {hasConversation ? (
       <div
         style={{

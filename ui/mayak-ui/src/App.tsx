@@ -1,7 +1,7 @@
 /**
- * App — каркас: сайдбар + страницы + split-view субагента.
- * Без window-событий: навигация и pending-сессия — React-state.
- * Тема (mode) живёт здесь и спускается пропсом t.
+ * App — shell: sidebar + pages + subagent split-view.
+ * No window events: navigation and pending session live in React state.
+ * Theme (mode) lives here and is passed down as the `t` prop.
  */
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useWindowSize } from "@gpuix/react";
@@ -17,7 +17,6 @@ import { Settings } from "./components/Settings";
 import ChainEditor from "./components/ChainEditor";
 import { autoTheme, dark, light, type ThemeMode, type WaveTheme } from "./tokens";
 import { winKeys } from "./windowKeys";
-import { log } from "./logger";
 
 export default function App() {
   const win = useWindowSize();
@@ -31,9 +30,9 @@ export default function App() {
   const [page, setPage] = useState<Page>("chat");
   const [subagentSession, setSubagentSession] = useState<string | null>(null);
   const [pendingSession, setPendingSession] = useState<string | null>(null);
-  /** id реально открытой сессии — подсветка строки в сайдбаре */
+  /** id of the actually opened session — highlights the row in the sidebar */
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  /** инкремент = команда «Новый чат» для ChatPage */
+  /** increment = the "New chat" command for ChatPage */
   const [newChatToken, setNewChatToken] = useState(0);
   const [sidebarW, setSidebarW] = useState<number>(
     () => +(globalThis.localStorage?.getItem("mayak-sidebar-w") ?? 236),
@@ -57,7 +56,7 @@ export default function App() {
   const onOpenSubagent = useCallback((id: string) => setSubagentSession(id), []);
   const clearPending = useCallback(() => setPendingSession(null), []);
 
-  // Esc → закрыть панель субагента; Ctrl+T → переключить тему (dev-переключатель)
+  // Esc → close the subagent panel; Ctrl+T → toggle theme (dev switch)
   useEffect(() => {
     winKeys.handler = (e) => {
       if (e.key === "escape") setSubagentSession(null);
@@ -76,7 +75,7 @@ export default function App() {
     setPendingSession(id);
   }, []);
 
-  /** Настоящий новый чат: сброс + чистая session/new (не навигация!) */
+  /** Real "new chat": reset + fresh session/new (not navigation!) */
   const onNewChat = useCallback(() => {
     setPage("chat");
     setActiveSessionId(null);

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # guard.sh — PreToolUse enforcement Пантеона
-# Оракул: write/edit ТОЛЬКО в .pantheon/plans/*.md и .pantheon/analysis/*.md; shell — read-only
+# Оракул/Метис: write/edit ТОЛЬКО в .pantheon/plans/*.md и .pantheon/analysis/*.md; shell — read-only
 # Библиотекарь: write/edit ТОЛЬКО в .pantheon/digests/*.md; shell — read-only
 # Goose / adhoc / неизвестные: allow (лог ведёт pantheon-log.sh)
 # Сигналы блокировки: stdout {"decision":"block","reason":...} или exit 2 + stderr
@@ -35,9 +35,9 @@ if [ "$tool" = "developer__write" ] || [ "$tool" = "developer__edit" ]; then
     *) [ -n "$wdir" ] && path="$wdir/$path" ;;
   esac
   case "$role" in
-    oracle)
+    oracle|metis)
       printf '%s' "$path" | grep -Eq '/\.pantheon/(plans|analysis)/[^/]+\.md$' && exit 0
-      block "[PANTHEON] Оракул может писать ТОЛЬКО в .pantheon/plans/*.md и .pantheon/analysis/*.md. Получено: $path. Policy: попроси conductor." ;;
+      block "[PANTHEON] Роль '$role' может писать ТОЛЬКО в .pantheon/plans/*.md и .pantheon/analysis/*.md. Получено: $path. Policy: попроси conductor." ;;
     librarian)
       printf '%s' "$path" | grep -Eq '/\.pantheon/digests/[^/]+\.md$' && exit 0
       block "[PANTHEON] Библиотекарь может писать ТОЛЬКО в .pantheon/digests/*.md. Получено: $path. Policy: попроси conductor." ;;

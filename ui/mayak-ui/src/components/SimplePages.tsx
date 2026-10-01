@@ -1,7 +1,7 @@
 /**
- * SimplePages — История сессий + Рецепты (порт с Tauri/CSS на GPUIX).
- * Таблицы → ряды div'ов с фиксированными колонками; API синхронный (api/db, api/config).
- * History принимает onOpenSession — React-state из App, без window-событий.
+ * SimplePages — session History + Recipes (port from Tauri/CSS to GPUIX).
+ * Tables → rows of divs with fixed columns; the API is synchronous (api/db, api/config).
+ * History takes onOpenSession — React state from App, no window events.
  */
 import { useEffect, useMemo, useState } from "react";
 import { listSessions, type SessionRow } from "../api/db";
@@ -108,7 +108,7 @@ export function History(props: { t: WaveTheme; onOpenSession?: (id: string) => v
 
   const mark = (k: SortKey) => (sortKey === k ? (sortDir === 1 ? " ▲" : " ▼") : "");
 
-  // id / тип / токены / статус / обновлена — фиксированные; «Сессия» забирает остаток
+  // id / type / tokens / status / updated — fixed columns; "Session" takes the rest
   const cols = [90, 110, 90, 95, 130];
 
   const headCell = (label: string, k: SortKey, width: number) => (
@@ -206,7 +206,7 @@ export function History(props: { t: WaveTheme; onOpenSession?: (id: string) => v
         </text>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
-          {/* шапка */}
+          {/* header row */}
           <div
             style={{
               display: "flex",

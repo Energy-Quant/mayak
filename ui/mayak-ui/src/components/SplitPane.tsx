@@ -1,11 +1,10 @@
 /**
- * SplitPane — левая | правая панель с divider (pointer capture, как useDragWidth).
- * Правая панель = live-стрим субагента (отдельный scroll-parent — не nested).
- * ratio считаем от ширины окна через useWindowSize (хук GPUIX).
+ * SplitPane — left | right panel with a divider (pointer capture, like useDragWidth).
+ * Right panel = subagent live stream (separate scroll parent — not nested).
+ * ratio is computed from the window width via useWindowSize (GPUIX hook).
  */
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useWindowSize, type EventPayload } from "@gpuix/react";
-import { log } from "../logger";
 
 export default function SplitPane(props: {
   left: ReactNode;
@@ -16,7 +15,7 @@ export default function SplitPane(props: {
   buttonBg: string;
   buttonText: string;
   borderColor: string;
-  /** ширина контента (окно − сайдбар), px — row-элементам нужен px/grow, НЕ width:100% */
+  /** content width (window − sidebar), px — row elements need px/grow, NOT width:100% */
   widthPx: number;
 }) {
   const { left, right, initialRatio = 0.6 } = props;

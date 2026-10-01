@@ -1,7 +1,7 @@
 /**
- * useDragWidth — ресайз панели по GPUIX pointer capture:
- * onMouseDown + onMouseMove + onMouseUp НА ОДНОМ узле = захват указателя
- * (как setPointerCapture в DOM — см. examples/timeline.tsx).
+ * useDragWidth — panel resize via GPUIX pointer capture:
+ * onMouseDown + onMouseMove + onMouseUp ON ONE node = pointer capture
+ * (like setPointerCapture in the DOM — see examples/timeline.tsx).
  */
 import { useCallback, useRef } from "react";
 import type { EventPayload } from "@gpuix/react";
@@ -9,7 +9,7 @@ import type { EventPayload } from "@gpuix/react";
 export function useDragWidth(
   get: () => number,
   set: (w: number) => void,
-  opts: { min: number; max: number; /** true: drag влево = шире (правая панель) */ invert?: boolean },
+  opts: { min: number; max: number; /** true: dragging left widens (right panel) */ invert?: boolean },
 ) {
   const drag = useRef<{ x0: number; w0: number } | null>(null);
 

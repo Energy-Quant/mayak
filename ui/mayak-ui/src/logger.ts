@@ -1,21 +1,21 @@
 /**
- * logger.ts — сквозное логирование Маяка (P12).
+ * logger.ts — end-to-end logging for Mayak (P12).
  *
- * Формат (единый для TS / Rust / Python / bash):
+ * Format (shared by TS / Rust / Python / bash):
  *   2026-09-29T21:40:12.345Z | ERROR | acp.ts | 20260929_3 | session/load | sessionId=undefined fallback=loadId
  *   ─────────── timestamp ── | level | module | session_id | event | detail
  *
- * Правила:
- *  - НИ ОДНОГО catch {} без log.error — иначе точка отказа невидима.
- *  - module = имя файла без пути (автоматически из import.meta).
- *  - session_id = активная ACP-сессия или '-'.
- *  - Уровень: env MAYAK_LOG = debug | info | warn | error (default: info).
- *  - Ротация: mayak.log по 5 MB, старые ×3 (mayak.log.1 .. .3).
+ * Rules:
+ *  - NO catch {} without a log entry — otherwise the failure point is invisible.
+ *  - module = file name without path (derived from import.meta).
+ *  - session_id = active ACP session or '-'.
+ *  - Level: env MAYAK_LOG = debug | info | warn | error (default: info).
+ *  - Rotation: mayak.log at 5 MB, 3 old files kept (mayak.log.1 .. .3).
  *
- * Пункт приёма: по логу найти точку отказа ЛЮБОЙ транзакции.
+ * Acceptance criterion: any transaction's failure point must be findable from the log.
  */
 
-import { appendFileSync, existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -30,12 +30,12 @@ function envLevel(): number {
 
 let threshold = envLevel();
 
-/** Сменить уровень на лету (UI / тесты). */
+/** Change the level at runtime (UI / tests). */
 export function setLogLevel(l: LogLevel): void {
   threshold = LEVELS[l];
 }
 
-/** Активная ACP-сессия — подставляется во все строки. */
+/** Active ACP session — substituted into every line. */
 let currentSession: string | null = null;
 export function setLogSession(id: string | null): void {
   currentSession = id;
@@ -65,23 +65,24 @@ function rotate(): void {
       if (existsSync(from)) renameSync(from, to);
     }
     renameSync(p, `${p}.1`);
-  } catch {
-    /* ротация не критична */
+  } catch (e) {
+    // rotation is non-fatal, but silent loss of old logs would hide failure history — surface on stderr
+    process.stderr.write(`${ts()} | WARN  | logger    | -           | logger.rotate | ${String(e)}\n`);
   }
 }
 
-/** Имя модуля = basename вызывающего файла. */
+/** Module name = basename of the calling file. */
 function moduleName(): string {
   try {
     const stack = new Error().stack ?? "";
-    // строки вида: at fn (file:///home/.../api/db.ts:12:3)
+    // lines like: at fn (file:///home/.../api/db.ts:12:3)
     const lines = stack.split("\n");
     for (const line of lines.slice(3)) {
       const m = line.match(/(?:\(?file:\/\/)?(\/[^:)]+):\d+:\d+\)?/);
       if (m && !m[2].endsWith("logger.ts")) return basename(m[2]);
     }
   } catch {
-    /* ignore */
+    /* best-effort: stack parsing may fail — fall back to the logger's own module name */
   }
   return "logger";
 }
@@ -90,7 +91,7 @@ function ts(): string {
   return new Date().toISOString();
 }
 
-/** Единая точка записи. */
+/** Single write path. */
 function write(level: LogLevel, event: string, detail: string, mod?: string): void {
   if (LEVELS[level] < threshold) return;
   const line = `${ts()} | ${level.toUpperCase().padEnd(5)} | ${(mod ?? moduleName()).padEnd(22)} | ${(currentSession ?? "-").padEnd(12)} | ${event} | ${detail}\n`;
@@ -99,10 +100,11 @@ function write(level: LogLevel, event: string, detail: string, mod?: string): vo
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     rotate();
     appendFileSync(logPath(), line);
-  } catch {
-    /* диски тоже падают — но stderr виден в терминале */
+  } catch (e) {
+    // disk failures happen — the file line is lost; warn/error still reach stderr below
+    process.stderr.write(`${ts()} | WARN  | logger    | -           | logger.write | ${String(e)}\n`);
   }
-  // дублируем warn/error в stderr для dev
+  // mirror warn/error to stderr for dev
   if (LEVELS[level] >= LEVELS.warn) process.stderr.write(line);
 }
 
@@ -111,19 +113,19 @@ export const log = {
   info: (event: string, detail = "", mod?: string) => write("info", event, detail, mod),
   warn: (event: string, detail = "", mod?: string) => write("warn", event, detail, mod),
   error: (event: string, detail = "", mod?: string) => write("error", event, detail, mod),
-  /** Старт транзакции — парная точка с log.end. */
+  /** Transaction start — pairs with log.end. */
   start: (event: string, detail = "", mod?: string) => write("info", `${event}.start`, detail, mod),
-  /** Финал транзакции: ok=1/0. */
+  /** Transaction end: ok=1/0. */
   end: (event: string, ok: boolean, detail = "", mod?: string) =>
     write(ok ? "info" : "error", `${event}.end`, `ok=${ok ? 1 : 0} ${detail}`.trim(), mod),
-  /** Обёртка catch — ВСЕГДА логируем ошибку. */
+  /** catch wrapper — ALWAYS logs the error. */
   fail: (event: string, err: unknown, mod?: string) => {
     const e = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
     write("error", event, e, mod);
   },
 };
 
-/** Для P3: лог + повторный бросок или fallback. */
+/** For P3: log + rethrow or fallback. */
 export function logged<T>(event: string, fn: () => T, fallback: T, mod?: string): T {
   try {
     return fn();
@@ -133,7 +135,7 @@ export function logged<T>(event: string, fn: () => T, fallback: T, mod?: string)
   }
 }
 
-/** Для async P3. */
+/** Async variant for P3. */
 export async function loggedAsync<T>(
   event: string,
   fn: () => Promise<T>,
@@ -148,5 +150,5 @@ export async function loggedAsync<T>(
   }
 }
 
-// ── старт модуля — видим, что логгер поднялся ──
+// ── module start — shows that the logger came up ──
 write("info", "logger.ready", `file=${logPath()} level=${process.env.MAYAK_LOG ?? "info"}`, "logger.ts");

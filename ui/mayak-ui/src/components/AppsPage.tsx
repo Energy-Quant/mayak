@@ -1,19 +1,18 @@
 /**
- * AppsPage — Приложения: HTML-приложения goose из ~/.local/share/goose/apps.
- * Порт с Tauri/CSS на GPUIX: getStoredApps → api/db.listStoredApps,
- * openApp → api/config.openApp (синхронно, try/catch → строка под карточкой).
+ * AppsPage — Apps: goose HTML apps from ~/.local/share/goose/apps.
+ * Port from Tauri/CSS to GPUIX: getStoredApps → api/db.listStoredApps,
+ * openApp → api/config.openApp (synchronous, try/catch → line under the card).
  */
 import { useEffect, useState } from "react";
 import { listStoredApps } from "../api/db";
 import { openApp } from "../api/config";
 import { Icon } from "./Icon";
 import { fs, type WaveTheme } from "../tokens";
-import { log } from "../logger";
 
 export function AppsPage(props: { t: WaveTheme }) {
   const t = props.t;
   const [apps, setApps] = useState<string[]>([]);
-  const [err, setErr] = useState(""); // ошибка загрузки списка → banner сверху
+  const [err, setErr] = useState(""); // list load error → banner at the top
   const [openErr, setOpenErr] = useState<{ name: string; msg: string } | null>(null);
   const [busy, setBusy] = useState("");
 

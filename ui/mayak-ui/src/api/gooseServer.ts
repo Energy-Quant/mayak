@@ -1,7 +1,7 @@
 /**
- * api/gooseServer.ts — порт goose_server.rs: спавн `goose serve` + readiness.
- * Origin: GPUIX desktop шлёт WS без Origin (или null/file) — base-список
- * --allowed-origin оставляем (exact-list ЗАМЕНЯЕТ loopback-дефолт goose).
+ * api/gooseServer.ts — port of goose_server.rs: spawn `goose serve` + readiness.
+ * Origin: the GPUIX desktop sends WS without Origin (or null/file) — keep the base
+ * --allowed-origin list (the exact list REPLACES goose's loopback default).
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -40,14 +40,14 @@ async function statusOk(port: number): Promise<boolean> {
     });
     return res.status === 200;
   } catch {
-    // statusOk: сайдкар ещё не слушает — не ошибка при readiness-poll
+    // statusOk: the sidecar is not listening yet — expected while polling readiness
     return false;
   }
 }
 
 /**
- * P2 watchdog: проверка здоровья goose serve.
- * Возвращает true если процесс жив и /status отвечает 200.
+ * P2 watchdog: health check for goose serve.
+ * Returns ok when the process is alive and /status answers 200.
  */
 export async function healthCheck(): Promise<{ ok: boolean; reason?: string }> {
   if (!info) return { ok: false, reason: "не запущен" };
@@ -57,12 +57,12 @@ export async function healthCheck(): Promise<{ ok: boolean; reason?: string }> {
   return ok ? { ok: true } : { ok: false, reason: `/status не отвечает на порту ${info.port}` };
 }
 
-/** Последняя известная информация о сайдкаре (для UI-индикатора). */
+/** Last known sidecar info (for the UI indicator). */
 export function currentInfo(): ServeInfo | null {
   return info;
 }
 
-/** Origins exact-list (хотя бы один --allowed-origin ВЫКЛЮЧАЕТ loopback-дефолт) */
+/** Origins exact-list (any --allowed-origin DISABLES the loopback default) */
 function baseOrigins(): string[] {
   return [
     "tauri://localhost",
@@ -81,12 +81,30 @@ function gooseBinary(): string {
     join(homedir(), ".local/bin/goose"),
   ];
   for (const p of candidates) if (existsSync(p)) return p;
-  throw new AppError(E.GOOSE_BINARY, "goose binary не найден ни в /opt/goose-desktop, ни ~/.local/bin");
+  throw new AppError(E.GOOSE_BINARY, "goose binary not found in /opt/goose-desktop or ~/.local/bin");
 }
 
-export async function start(dir?: string, origins?: string[]): Promise<ServeInfo> {
+/**
+ * Serialize spawn/kill: concurrent ACP starts (UI retry vs watchdog reconnect)
+ * must not race two Bun.spawn calls — that leaks a zombie sidecar.
+ */
+let opTail: Promise<unknown> = Promise.resolve();
+function serialize<T>(fn: () => Promise<T>): Promise<T> {
+  const run = opTail.then(fn, fn);
+  opTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+export function start(dir?: string, origins?: string[]): Promise<ServeInfo> {
+  return serialize(() => startLocked(dir, origins));
+}
+
+async function startLocked(dir?: string, origins?: string[]): Promise<ServeInfo> {
   log.start("gooseServer.start", `dir=${dir ?? "default"} origins=${(origins ?? baseOrigins()).length}`);
-  // живой здоровый sidecar — переиспользуем (retry без спавна зомби)
+  // alive and healthy sidecar — reuse it (retries without spawning a zombie)
   if (info) {
     const alive = child !== null && child.exitCode === null && child.signalCode === null;
     if (alive && (await statusOk(info.port))) return info;
@@ -105,7 +123,7 @@ export async function start(dir?: string, origins?: string[]): Promise<ServeInfo
   const home = homedir();
   const goosePath = gooseBinary();
   const workingDir = dir ?? home;
-  if (!existsSync(workingDir)) mkdirSync(workingDir, { recursive: true }); // spawn падает с ENOENT на несуществующем cwd
+  if (!existsSync(workingDir)) mkdirSync(workingDir, { recursive: true }); // spawn fails with ENOENT on a non-existent cwd
   const port = await freePort();
   secret = `sk-mayak-${Date.now().toString(16)}517cc1b7`;
 
@@ -157,7 +175,7 @@ export async function start(dir?: string, origins?: string[]): Promise<ServeInfo
     }
     await new Promise((r) => setTimeout(r, 500));
   }
-  // readiness не дождались — убить, чтобы не копить зомби
+  // readiness never came — kill it so zombies do not accumulate
   try {
     child.kill();
   } catch (e) {
@@ -165,10 +183,14 @@ export async function start(dir?: string, origins?: string[]): Promise<ServeInfo
   }
   child = null;
   log.end("gooseServer.start", false, "readiness timeout 25s");
-  throw new AppError(E.GOOSE_STARTUP, "goose serve не поднялся за 25с readiness timeout", { recoverable: true });
+  throw new AppError(E.GOOSE_STARTUP, "goose serve failed to become ready within the 25s timeout", { recoverable: true });
 }
 
-export async function stop(): Promise<void> {
+export function stop(): Promise<void> {
+  return serialize(() => stopLocked());
+}
+
+async function stopLocked(): Promise<void> {
   log.start("gooseServer.stop", `pid=${child?.pid ?? "-"}`);
   if (child) {
     try {

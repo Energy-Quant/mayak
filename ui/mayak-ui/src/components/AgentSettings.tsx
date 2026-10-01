@@ -1,8 +1,8 @@
 /**
- * AgentSettings — fallback-цепочки ролей (goose/oracle/librarian) из pantheon.toml.
- * Порт AgentSettings.tsx (138 строк, Tauri/CSS) → GPUIX 0.10.
- * Легаси getChains/saveChain/getCatalog → getAgentChains/saveAgentChain (api/config),
- * getProviderCatalog (api/catalog). <select> → свои dropdown-div'ы.
+ * AgentSettings — role fallback chains (goose/oracle/librarian) from pantheon.toml.
+ * Port of AgentSettings.tsx (138 lines, Tauri/CSS) → GPUIX 0.10.
+ * Legacy getChains/saveChain/getCatalog → getAgentChains/saveAgentChain (api/config),
+ * getProviderCatalog (api/catalog). <select> → custom dropdown divs.
  */
 import { useEffect, useState } from "react";
 import {
@@ -29,7 +29,7 @@ function roleColor(role: Role, t: WaveTheme): string {
   return t.cyan;
 }
 
-/* Запасной список провайдеров — из легаси, пока каталог не загрузился */
+/* Fallback provider list — from legacy, used until the catalog loads */
 const FALLBACK_PROVIDERS = ["opencode_go", "custom_routerai", "ollama_cloud"];
 const DEFAULT_STEP: ChainStep = { provider: "opencode_go", model: "glm-5.3-flash" };
 
@@ -41,7 +41,7 @@ function defaultChains(): AgentChainJson[] {
   }));
 }
 
-/* ── кнопка-иконка ── */
+/* ── icon button ── */
 
 function MiniBtn(props: { t: WaveTheme; label: string; onClick: () => void }) {
   const t = props.t;
@@ -68,7 +68,7 @@ function MiniBtn(props: { t: WaveTheme; label: string; onClick: () => void }) {
   );
 }
 
-/* ── свой «выпадающий» список (легаси <select>) ── */
+/* ── custom dropdown (legacy <select>) ── */
 
 function Dropdown(props: {
   t: WaveTheme;
@@ -201,7 +201,7 @@ function Dropdown(props: {
   );
 }
 
-/* ── ступень цепочки: провайдер → модель ── */
+/* ── chain step: provider → model ── */
 
 function StepEditor(props: {
   t: WaveTheme;
@@ -259,7 +259,7 @@ function StepEditor(props: {
   );
 }
 
-/* ── страница ── */
+/* ── page ── */
 
 export function AgentSettings(props: { t: WaveTheme }) {
   const t = props.t;
@@ -270,17 +270,27 @@ export function AgentSettings(props: { t: WaveTheme }) {
   const [err, setErr] = useState("");
 
   useEffect(() => {
+    let alive = true;
     try {
       setChains(getAgentChains());
       setErr("");
     } catch (e) {
-      // pantheon.toml ещё нет — даём пустые цепочки, сохранение создаст файл
+      // no pantheon.toml yet — start with empty chains; saving creates the file
+      log.debug("ui.chains.load", String(e));
       setChains(defaultChains());
       setErr(`pantheon.toml не найден: ${String(e).slice(0, 80)}`);
     }
     getProviderCatalog()
-      .then((c) => setCatalog(c))
-      .catch(() => setCatalog(null));
+      .then((c) => {
+        if (alive) setCatalog(c);
+      })
+      .catch((e) => {
+        log.debug("ui.catalog", String(e));
+        if (alive) setCatalog(null);
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const update = (role: Role, next: AgentChainJson) => {

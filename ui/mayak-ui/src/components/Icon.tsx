@@ -1,6 +1,6 @@
 /**
- * Icon — контурные иконки (lucide-геометрия) как raw SVG source для GPUIX <svg>.
- * Stroke = color (в GPUI нет currentColor-наследования от текста).
+ * Icon — outline icons (lucide geometry) as raw SVG source for GPUIX <svg>.
+ * Stroke = color (GPUI has no currentColor inheritance from text).
  */
 export type IconName =
   | "plus"

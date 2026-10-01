@@ -1,6 +1,6 @@
 /**
- * windowKeys — реестр window-level keydown (GPUIX: хендлеры в render()).
- * handler — верхний уровень (App: Esc/Ctrl+T); chat — чат-слой (Ctrl+V вложения).
+ * windowKeys — registry of window-level keydown handlers (GPUIX: handlers run in render()).
+ * handler — top level (App: Esc/Ctrl+T); chat — chat layer (Ctrl+V attachments).
  */
 import type { EventPayload } from "@gpuix/react";
 

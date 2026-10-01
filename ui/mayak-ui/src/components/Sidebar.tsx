@@ -1,5 +1,5 @@
 /**
- * Sidebar — навигация + список чатов (порт без DOM; resize через pointer capture).
+ * Sidebar — navigation + chat list (port without DOM; resize via pointer capture).
  */
 import { useEffect, useState } from "react";
 import { listSessions, type SessionRow } from "../api/db";
@@ -33,9 +33,9 @@ export default function Sidebar(props: {
   page: Page;
   onNavigate: (p: Page) => void;
   onOpenSession: (id: string) => void;
-  /** настоящее действие «Новый чат» (сброс+новая сессия), не навигация */
+  /** real "New chat" action (reset + new session), not navigation */
   onNewChat: () => void;
-  /** подсветка открытой строки чата */
+  /** highlight of the open chat row */
   activeSessionId: string | null;
   width: number;
   onWidth: (w: number) => void;
@@ -50,12 +50,12 @@ export default function Sidebar(props: {
     const load = () => {
       try {
         setSessions(
-          // Иерархия: слева — только основные чаты; sub_agent/hidden/gateway и дети — внутрь
+          // Hierarchy: only top-level chats on the left; sub_agent/hidden/gateway and children go inside
           listSessions(false).filter(
             (s) =>
               !["sub_agent", "hidden", "gateway"].includes(s.session_type) &&
               !s.parent_session_id &&
-              // пустые спам-сессии «New Chat» (0 токенов) от переподключений — не показываем
+              // empty spam sessions "New Chat" (0 tokens) from reconnects — hidden
               !(s.title === "New Chat" && s.total_tokens === 0),
           ),
         );
@@ -185,8 +185,8 @@ export default function Sidebar(props: {
                 fontSize: fs.sm,
                 color: t.dim,
                 flexGrow: 1,
-                // без minWidth:0 + overflow text не сжимается в flex и вылезает
-                // поверх paddingRight до самого бортика сайдбара
+                // without minWidth:0 + overflow the text does not shrink in flex and spills
+                // over paddingRight to the very edge of the sidebar
                 minWidth: 0,
                 overflow: "hidden",
                 whiteSpace: "nowrap",
@@ -205,7 +205,7 @@ export default function Sidebar(props: {
 
       {navItem({ id: "settings", label: "Настройки", icon: "settings" }, true)}
 
-      {/* resize handle: pointer capture на самом узле */}
+      {/* resize handle: pointer capture on the node itself */}
       <div
         onMouseDown={drag.onMouseDown}
         onMouseMove={drag.onMouseMove}

@@ -1,11 +1,11 @@
 /**
- * api/clipboard.ts — порт clipboard_image() (wl-paste).
- * Формат: { mime, data: number[] } | null — паритет serde_json Vec<u8>.
- * wl-paste — primary для image на Wayland; GPUIX clipboard API = fallback (шаг 8).
+ * api/clipboard.ts — port of clipboard_image() (wl-paste).
+ * Format: { mime, data: number[] } | null — parity with serde_json Vec<u8>.
+ * wl-paste — primary for images on Wayland; GPUIX clipboard API = fallback (step 8).
  */
 import { log } from "../logger";
 
-/** Копирование текста в системный буфер (Wayland wl-copy); тихо при отсутствии */
+/** Copy text to the system clipboard (Wayland wl-copy); silent when unavailable */
 export function copyText(text: string): void {
   try {
     const p = Bun.spawn(["wl-copy"], { stdin: "pipe", stdout: "ignore", stderr: "ignore" });
@@ -13,13 +13,13 @@ export function copyText(text: string): void {
     p.stdin.end();
   } catch (e) {
     log.fail("clipboard.wl-paste", e);
-    /* нет wl-clipboard — молчим (паритет fallbackCopy без DOM) */
+    /* no wl-clipboard — stay silent (parity with DOM-less fallbackCopy) */
   }
 }
 
 export function clipboardImage(): { mime: string; data: number[] } | null {
   const types = Bun.spawnSync(["wl-paste", "--list-types"]);
-  if (types.exitCode !== 0) return null; // нет wl-clipboard — просто нет картинки
+  if (types.exitCode !== 0) return null; // no wl-clipboard — simply no image
   const text = new TextDecoder().decode(types.stdout);
   const mime = ["image/png", "image/jpeg", "image/webp"].find((m) =>
     text.split("\n").some((l) => l.trim() === m),

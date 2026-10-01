@@ -1,6 +1,6 @@
 /**
- * api/catalog.ts — порт get_provider_catalog / validate_chain_step из main.rs.
- * context_limit: file-is-truth ~/.config/goose/opencode-go-models.json (MERGE поверх API).
+ * api/catalog.ts — port of get_provider_catalog / validate_chain_step from main.rs.
+ * context_limit: file-is-truth ~/.config/goose/opencode-go-models.json (MERGED over the API).
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -20,7 +20,7 @@ export interface Catalog {
   models_by_provider: Record<string, CatalogModel[]>;
 }
 
-/** Локальная истина context_limit: opencode-go-models.json (AA-ревизия) */
+/** Local truth for context_limit: opencode-go-models.json (AA revision) */
 function loadContextTruth(): Map<string, number> {
   const out = new Map<string, number>();
   try {
@@ -100,12 +100,13 @@ export async function getProviderCatalog(): Promise<Catalog> {
           name: m.id as string,
           context_limit: typeof m.context_limit === "number" ? (m.context_limit as number) : null,
         }));
-    } catch {
-      /* API упал — catalog из JSON */
+    } catch (e) {
+      log.debug("catalog.providerFetch", e instanceof Error ? e.message : String(e));
+      /* API failed — fall back to the JSON catalog below */
     }
   }
 
-  // MERGE: context_limit из JSON перекрывает API; если API пуст — весь каталог из JSON
+  // MERGE: context_limit from JSON overrides the API; if the API is empty — the whole catalog comes from JSON
   if (apiList.length === 0) {
     apiList = [...ctxTruth.keys()]
       .sort()
@@ -127,11 +128,11 @@ export interface ValidationResult {
   latency_ms: number;
 }
 
-/** Мини-запрос к модели (ловит 403/region/невалидные имена) — паритет main.rs */
+/** Tiny model probe (catches 403/region/invalid names) — parity with main.rs */
 export async function validateChainStep(step: ChainStep): Promise<ValidationResult> {
   const started = Date.now();
   const key = opencodeApiKey();
-  if (!key) throw new AppError(E.NO_API_KEY, "OPENCODE_API_KEY не найден (env/secrets/keyring)");
+  if (!key) throw new AppError(E.NO_API_KEY, "OPENCODE_API_KEY not found (env/secrets/keyring)");
 
   let status: number | null = null;
   try {

@@ -1,7 +1,7 @@
 /**
- * api/attachments.ts — порт stage_attachment + read_file_bytes.
- * Кэш: ~/.cache/goose/mayak-attachments/ (новое имя UI; Phase 0/1 не трогаем).
- * Лимит файла 25 МБ — паритет.
+ * api/attachments.ts — port of stage_attachment + read_file_bytes.
+ * Cache: ~/.cache/goose/mayak-attachments/ (new UI name; Phase 0/1 untouched).
+ * 25 MB file limit — parity.
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -11,7 +11,7 @@ import { AppError, E } from "../errors";
 
 const MAX_BYTES = 25 * 1024 * 1024;
 
-/** bytes → временный файл → путь для goose (паритет stage_attachment) */
+/** bytes → temp file → path for goose (parity with stage_attachment) */
 export function stageAttachment(name: string, data: Uint8Array | number[]): string {
   const base = join(homedir(), ".cache/goose/mayak-attachments");
   mkdirSync(base, { recursive: true });
@@ -25,18 +25,18 @@ export function stageAttachment(name: string, data: Uint8Array | number[]): stri
   return path;
 }
 
-/** Чтение файла для превью/ACP image — number[] (паритет Vec<u8> → JSON array) */
+/** Read a file for preview/ACP image — number[] (parity: Vec<u8> → JSON array) */
 export async function readFileBytes(path: string): Promise<number[]> {
   if (!existsSync(path) || !statSync(path).isFile()) {
-    throw new AppError(E.FILE_NOT_FOUND, `не найден: ${path}`, { context: { path } });
+    throw new AppError(E.FILE_NOT_FOUND, `not found: ${path}`, { context: { path } });
   }
   const meta = statSync(path);
-  if (meta.size > MAX_BYTES) throw new AppError(E.FILE_TOO_BIG, `файл больше 25 МБ: ${path}`, { context: { path, size: meta.size } });
+  if (meta.size > MAX_BYTES) throw new AppError(E.FILE_TOO_BIG, `file larger than 25 MB: ${path}`, { context: { path, size: meta.size } });
   const buf = await Bun.file(path).arrayBuffer();
   return Array.from(new Uint8Array(buf));
 }
 
-/** Жатие ≤1024px → JPEG q85 через ImageMagick (паритет compressImageDataUrl); нет magick → оригинал */
+/** Downscale ≤1024px → JPEG q85 via ImageMagick (parity with compressImageDataUrl); no magick → original */
 export function compressImageBytes(
   bytes: Uint8Array,
   mime: string,
@@ -51,7 +51,7 @@ export function compressImageBytes(
     }
   } catch (e) {
     log.fail("attachments.read", e);
-    /* нет ImageMagick */
+    /* ImageMagick not installed — keep the original */
   }
   return { bytes, mimeType: mime };
 }

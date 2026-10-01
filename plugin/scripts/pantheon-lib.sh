@@ -98,14 +98,17 @@ resolve_role() {
       title=$(printf '%s' "$rj" | jq -r '.title // empty' 2>/dev/null)
       case "$title" in
         "Agent: oracle")       r="oracle" ;;
+        "Agent: metis")        r="metis" ;;
         "Agent: librarian")    r="librarian" ;;
         "Agent: pantheon-conductor"|"Agent: goose") r="goose" ;;
         "Oracle Consultation") r="oracle" ;;
+        "Metis Critique")      r="metis" ;;
         "Librarian Research")  r="librarian" ;;
       esac
       if [ -z "$r" ]; then
         case "$rj" in
           *"[PANTHEON:oracle]"*)    r="oracle" ;;
+          *"[PANTHEON:metis]"*)     r="metis" ;;
           *"[PANTHEON:librarian]"*) r="librarian" ;;
           *"[PANTHEON:goose]"*)     r="goose" ;;
         esac

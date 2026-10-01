@@ -1,16 +1,15 @@
 /**
- * Scheduler — Планировщик: задания из ~/.local/share/goose/schedule.json
- * (ScheduledJob goose). Порт с Tauri/CSS на GPUIX: статусы строго из полей JSON
- * (currently_running / paused / cron), без магии; таблица → ряды div'ов.
+ * Scheduler — scheduled jobs from ~/.local/share/goose/schedule.json
+ * (goose ScheduledJob). Port from Tauri/CSS to GPUIX: statuses come strictly from JSON fields
+ * (currently_running / paused / cron), no magic; table → rows of divs.
  */
 import { useEffect, useMemo, useState } from "react";
 import { getScheduledJobs } from "../api/db";
 import { copyText } from "../api/clipboard";
 import { Icon } from "./Icon";
 import { fs, type WaveTheme } from "../tokens";
-import { log } from "../logger";
 
-/** Поля ScheduledJob (crates/goose/src/scheduler.rs) + устойчивость к альт. именам */
+/** ScheduledJob fields (crates/goose/src/scheduler.rs) + tolerance for alt names */
 interface Job {
   id?: string;
   schedule_id?: string;
@@ -63,7 +62,7 @@ function Dot(props: { color: string }) {
   );
 }
 
-/** Статус из полей JSON: работающий / на паузе / расписание */
+/** Status from JSON fields: running / paused / scheduled */
 function statusOf(j: Job, t: WaveTheme): { label: string; color: string } {
   if (j.currently_running) return { label: "работающий", color: t.green };
   if (j.paused) return { label: "на паузе", color: t.gold };
@@ -80,7 +79,7 @@ export function Scheduler(props: { t: WaveTheme }) {
       const js = (getScheduledJobs() ?? []) as Job[];
       setJobs(
         [...js].sort((a, b) => {
-          // сначала работающие, затем обычные, затем на паузе; внутри — по id
+          // running first, then regular, then paused; ties broken by id
           const rank = (j: Job) => (j.currently_running ? 0 : j.paused ? 2 : 1);
           const ra = rank(a);
           const rb = rank(b);
@@ -104,8 +103,8 @@ export function Scheduler(props: { t: WaveTheme }) {
     [jobs],
   );
 
-  // имя / расписание / статус / сессия / последний запуск — фиксированные;
-  // «Рецепт» забирает остаток строки
+  // name / schedule / status / session / last run — fixed columns;
+  // "Recipe" takes the rest of the row
   const cols = [150, 140, 130, 100, 120];
 
   const headCell = (label: string, width: number) => (
@@ -212,7 +211,7 @@ export function Scheduler(props: { t: WaveTheme }) {
         </text>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
-          {/* шапка */}
+          {/* header row */}
           <div
             style={{
               display: "flex",

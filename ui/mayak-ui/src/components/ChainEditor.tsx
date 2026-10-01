@@ -1,10 +1,10 @@
 /**
- * ChainEditor — GPUIX-порт редактора цепочек агентов (pantheon.toml).
- * Легаси: ui/pantheon-ui-tauri-legacy/src/components/ChainEditor.tsx (602 строки, CSS/классы).
+ * ChainEditor — GPUIX port of the agent chain editor (pantheon.toml).
+ * Legacy: ui/pantheon-ui-tauri-legacy/src/components/ChainEditor.tsx (602 lines, CSS/classes).
  *
- * Модель: цепочка = primary + fallbacks[] (шаг = provider + model).
- * note — UI-only, в toml не пишется. Только saveAgentChain (без автосинка).
- * Каталог/валидация — ../../api/catalog (асинхронно), цепочки — api/config.
+ * Model: chain = primary + fallbacks[] (step = provider + model).
+ * note — UI-only, never written to toml. saveAgentChain only (no auto-sync).
+ * Catalog/validation — ../../api/catalog (async), chains — api/config.
  */
 import { useEffect, useState } from "react";
 import {
@@ -23,12 +23,12 @@ import { Icon } from "./Icon";
 import { fs, type WaveTheme } from "../tokens";
 import { log } from "../logger";
 
-// ── Типы ──────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 type ChainId = "goose" | "oracle" | "librarian" | "pantheon-conductor";
 
 interface EditorStep {
-  key: string; // локальный id для React-key / lookup проверок
+  key: string; // local id for React keys / check lookups
   provider: string;
   model: string;
   note: string;
@@ -40,7 +40,7 @@ interface CheckState {
   text?: string;
 }
 
-// ── Пресеты (скопированы as-is из легаси ui/pantheon-ui-tauri-legacy/src/api.ts) ──────────────
+// ── Presets (copied as-is from legacy ui/pantheon-ui-tauri-legacy/src/api.ts) ──────────────
 
 const PRESETS: Record<string, AgentChain[]> = {
   "OpenCode Go (подписка)": [
@@ -67,7 +67,7 @@ const PRESETS: Record<string, AgentChain[]> = {
   ],
 };
 
-// ── Константы / хелперы ───────────────────────────────────────────────────────
+// ── Constants / helpers ───────────────────────────────────────────────────────
 
 const CHAINS: { id: ChainId; emoji: string }[] = [
   { id: "goose", emoji: "🪿" },
@@ -112,7 +112,7 @@ const checkKey = (id: ChainId, key: string) => `${id}::${key}`;
 const errText = (e: unknown): string =>
   String(e instanceof Error ? e.message : e).slice(0, 200);
 
-// ── Выпадающий список на div'ах (заменяет <select> из легаси) ────────────────
+// ── Dropdown built from divs (replaces the legacy <select>) ────────────────
 
 function Pick(props: {
   t: WaveTheme;
@@ -226,7 +226,7 @@ function Pick(props: {
   );
 }
 
-// ── Компонент ─────────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ChainEditor(props: { t: WaveTheme }) {
   const t = props.t;
@@ -246,7 +246,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [checks, setChecks] = useState<Record<string, CheckState>>({});
 
-  // Загрузка: цепочки (sync, вне файла — banner + PRESETS) + каталог (async)
+  // Load: chains (sync, outside the file — banner + PRESETS) + catalog (async)
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -264,7 +264,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
       } catch (e) {
         if (!alive) return;
         setLoadError(errText(e));
-        // нет pantheon.toml → пресет подписки как стартовое состояние
+        // no pantheon.toml → subscription preset as the initial state
         setStepsByChain(() => {
           const next = emptySteps();
           for (const c of PRESETS["OpenCode Go (подписка)"]) next[c.role] = chainToSteps(c);
@@ -276,7 +276,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
         const cat = await getProviderCatalog();
         if (alive) setCatalog(cat);
       } catch (e) { log.debug("ui.error", String(e));
-        if (alive) setCatalog(null); // каталог недоступен → model как text input
+        if (alive) setCatalog(null); // catalog unavailable → model becomes a text input
       }
       if (alive) setLoading(false);
     })();
@@ -285,7 +285,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
     };
   }, []);
 
-  // ── Мутации шагов ──
+  // ── Step mutations ──
   const mutate = (id: ChainId, fn: (steps: EditorStep[]) => EditorStep[]) => {
     setStepsByChain((prev) => ({ ...prev, [id]: fn(prev[id]) }));
     setDirty((d) => ({ ...d, [id]: true }));
@@ -337,7 +337,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
     mutate(id, (prev) => [...prev, mkStep(provider, model)]);
   };
 
-  // ── Пресеты ──
+  // ── Presets ──
   const applyPreset = (name: string) => {
     const rows = PRESETS[name];
     if (!rows) return;
@@ -355,7 +355,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
     setSaveMsg({ ok: true, text: `Пресет «${name}» применён — не сохранён, нажмите «Сохранить»` });
   };
 
-  // ── «Проверить»: validateChainStep (async) ──
+  // ── "Check": validateChainStep (async) ──
   const validateOne = async (id: ChainId, step: EditorStep) => {
     if (!step.model.trim()) return;
     const ck = checkKey(id, step.key);
@@ -380,7 +380,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
     }
   };
 
-  // ── «Сохранить»: saveAgentChain (только pantheon.toml, без автосинка) ──
+  // ── "Save": saveAgentChain (pantheon.toml only, no auto-sync) ──
   const steps = stepsByChain[selected];
   const readOnly = selected === "pantheon-conductor";
   const stepsValid = steps.length > 0 && steps.every((s) => s.model.trim() && s.provider.trim());
@@ -406,7 +406,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
     }
   };
 
-  // ── Рендер ──
+  // ── Render ──
   const emoji = (CHAINS.find((c) => c.id === selected) ?? CHAINS[0]!).emoji;
   const roleColor =
     selected === "goose"
@@ -481,7 +481,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
         primary + fallbacks → ~/.config/goose/pantheon.toml
       </text>
 
-      {/* Ошибка загрузки (нет pantheon.toml / не читается) */}
+      {/* load error (no pantheon.toml / unreadable) */}
       {loadError ? (
         <div
           style={{
@@ -505,7 +505,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
         </div>
       ) : null}
 
-      {/* Пресеты */}
+      {/* Presets */}
       <div
         style={{
           display: "flex",
@@ -524,7 +524,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
       </div>
 
       <div style={{ display: "flex", flexDirection: "row", flexGrow: 1, minHeight: 0 }}>
-        {/* Список цепочек слева */}
+        {/* chain list on the left */}
         <div
           style={{
             display: "flex",
@@ -607,7 +607,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
           })}
         </div>
 
-        {/* Редактор шагов справа */}
+        {/* step editor on the right */}
         <div
           style={{
             display: "flex",
@@ -709,7 +709,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
                       gap: 8,
                     }}
                   >
-                    {/* бейдж P / Fn */}
+                    {/* P / Fn badge */}
                     <div
                       style={{
                         display: "flex",
@@ -739,7 +739,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
                       </text>
                     ) : null}
 
-                    {/* провайдер: pick из каталога, иначе input */}
+                    {/* provider: pick from the catalog, else a plain input */}
                     {providerOptions.length > 0 ? (
                       <Pick
                         t={t}
@@ -773,7 +773,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
                       />
                     )}
 
-                    {/* модель: pick из каталога, иначе input */}
+                    {/* model: pick from the catalog, else a plain input */}
                     {models.length > 0 ? (
                       <Pick
                         t={t}
@@ -834,7 +834,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
                       : null}
                   </div>
 
-                  {/* note — заметка шага (UI-only) */}
+                  {/* note — step annotation (UI-only) */}
                   <input
                     value={step.note}
                     readOnly={saving || readOnly}
@@ -855,7 +855,7 @@ export default function ChainEditor(props: { t: WaveTheme }) {
                     }}
                   />
 
-                  {/* результат валидации */}
+                  {/* validation result */}
                   {check?.checking ? (
                     <text style={{ fontSize: fs.xs, color: t.dim }}>
                       проверка модели…

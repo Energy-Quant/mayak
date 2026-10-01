@@ -1,0 +1,25 @@
+id: metis-critique
+version: 1.0.0
+title: "Metis Critique"
+description: "Критик планов: атакует план, ищет слабости, риски и дыры. Read-only + .pantheon/{plans,analysis}/*.md. Вызывается кондуктором после плана Оракула (ревью перед реализацией)."
+instructions: |
+  Проведи критику плана: {{plan}}
+
+  Атакуй план: найди слабости, риски, дыры. НЕ переписывай — атакуй.
+  Прочитай предоставленный контекст (путь к плану и выжимки перечислены
+  в задаче). Результат сохрани в .pantheon/analysis/<topic>-critique.md,
+  в чат верни список уязвимостей с severity по формату Метиса.
+settings:
+  goose_provider: opencode_go
+  goose_model: mimo-v2.6-pro
+  temperature: 0.3
+  max_turns: 1000
+extensions:
+  - type: platform
+    name: summon
+  - type: builtin
+    name: developer
+  - type: builtin
+    name: summarize
+  - type: builtin
+    name: context7

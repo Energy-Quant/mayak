@@ -1,15 +1,19 @@
 /**
- * PantheonPanel — панель «Маяк»: runs/артефакты/роли из pantheon.db.
- * Порт PantheonPanel.tsx: <style>+className → style-объекты, таблицы → row-сетки,
- * safeInvoke → api/db.getPantheonOverview (синхронно), clipboard → wl-copy.
+ * PantheonPanel — "Mayak" panel: runs/artifacts/roles from pantheon.db.
+ * Port of PantheonPanel.tsx: <style>+className → style objects, tables → row grids,
+ * safeInvoke → api/db.getPantheonOverview (synchronous), clipboard → wl-copy.
  */
 import { useEffect, useState } from "react";
 import {
   getPantheonOverview,
+  getRoleUsage,
+  getConfigAudit,
   type PantheonOverview,
   type PantheonRun,
   type PantheonArtifact,
   type RoleStat,
+  type RoleUsage,
+  type AuditEntry,
 } from "../api/db";
 import { copyText } from "../api/clipboard";
 import { fs, type WaveTheme } from "../tokens";
@@ -38,11 +42,15 @@ function kindColor(kind: string, t: WaveTheme): string {
 export default function PantheonPanel(props: { t: WaveTheme }) {
   const t = props.t;
   const [data, setData] = useState<PantheonOverview | null>(null);
+  const [usage, setUsage] = useState<RoleUsage[]>([]);
+  const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     try {
       setData(getPantheonOverview());
+      setUsage(getRoleUsage(7));
+      setAudit(getConfigAudit(15));
       setError("");
     } catch (e) {
       setError(String(e).slice(0, 160));
@@ -186,8 +194,8 @@ export default function PantheonPanel(props: { t: WaveTheme }) {
                 );
               })()}
 
-          {/* ── Роли ── */}
-          {sectionTitle("РАСХОДЫ PER-ROLE")}
+          {/* ── Roles ── */}
+          {sectionTitle("РОЛИ")}
           {data.role_stats.length === 0
             ? empty("Нет данных по ролям.")
             : (() => {
@@ -255,7 +263,68 @@ export default function PantheonPanel(props: { t: WaveTheme }) {
                 );
               })()}
 
-          {/* ── Артефакты ── */}
+          {/* ── Per-role spend for the week ── */}
+          {sectionTitle("РАСХОДЫ · 7 ДНЕЙ")}
+          {usage.length === 0
+            ? empty("Нет данных об использовании (usage_ledger пуст).")
+            : (() => {
+                const cols = [120, 110, 110, 110]; // role/input/output/cost
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "row",
+                        gap: 8,
+                        paddingBottom: 6,
+                        borderBottomWidth: 1,
+                        borderColor: t.border,
+                      }}
+                    >
+                      {headCell("role", cols[0])}
+                      {headCell("input", cols[1])}
+                      {headCell("output", cols[2])}
+                      {headCell("cost ≈", cols[3])}
+                    </div>
+                    {usage.map((u: RoleUsage) => (
+                      <div
+                        key={u.role}
+                        style={{
+                          display: "flex",
+                          flexDirection: "row",
+                          gap: 8,
+                          paddingTop: 6,
+                          paddingBottom: 6,
+                          borderBottomWidth: 1,
+                          borderColor: t.border,
+                        }}
+                      >
+                        <text
+                          style={{
+                            fontSize: fs.md,
+                            width: cols[0],
+                            whiteSpace: "nowrap",
+                            color: roleColor(u.role, t),
+                          }}
+                        >
+                          {`${ROLE_EMOJI[u.role] ?? "•"} ${u.role}`}
+                        </text>
+                        <text style={{ fontSize: fs.md, width: cols[1], color: t.text, whiteSpace: "nowrap" }}>
+                          {u.input_tokens.toLocaleString("ru-RU")}
+                        </text>
+                        <text style={{ fontSize: fs.md, width: cols[2], color: t.text, whiteSpace: "nowrap" }}>
+                          {u.output_tokens.toLocaleString("ru-RU")}
+                        </text>
+                        <text style={{ fontSize: fs.md, width: cols[3], color: t.gold, whiteSpace: "nowrap" }}>
+                          {u.cost_usd != null ? `$${u.cost_usd.toFixed(4)}` : "—"}
+                        </text>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+          {/* ── Artifacts ── */}
           {sectionTitle("АРТЕФАКТЫ")}
           {(() => {
             const map = new Map<string, PantheonArtifact[]>();
@@ -322,6 +391,78 @@ export default function PantheonPanel(props: { t: WaveTheme }) {
               </div>
             ));
           })()}
+
+          {/* ── Config change history ── */}
+          {sectionTitle("ИСТОРИЯ ПРАВОК")}
+          {audit.length === 0
+            ? empty("Правок конфига пока нет.")
+            : (() => {
+                const cols = [130, 110, 150, 160]; // when/who/what/hash
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "row",
+                        gap: 8,
+                        paddingBottom: 6,
+                        borderBottomWidth: 1,
+                        borderColor: t.border,
+                      }}
+                    >
+                      {headCell("when", cols[0])}
+                      {headCell("who", cols[1])}
+                      {headCell("what", cols[2])}
+                      {headCell("diff hash", cols[3])}
+                    </div>
+                    {audit.map((a: AuditEntry, i: number) => (
+                      <div
+                        key={`${a.created_at}-${a.id}-${i}`}
+                        style={{
+                          display: "flex",
+                          flexDirection: "row",
+                          gap: 8,
+                          paddingTop: 6,
+                          paddingBottom: 6,
+                          borderBottomWidth: 1,
+                          borderColor: t.border,
+                        }}
+                      >
+                        <text style={{ fontSize: fs.md, width: cols[0], color: t.dim, whiteSpace: "nowrap" }}>
+                          {a.created_at}
+                        </text>
+                        <text
+                          style={{
+                            fontSize: fs.md,
+                            width: cols[1],
+                            whiteSpace: "nowrap",
+                            textOverflow: "ellipsis",
+                            color: roleColor(a.actor, t),
+                          }}
+                        >
+                          {a.actor || "—"}
+                        </text>
+                        <text
+                          style={{
+                            fontSize: fs.md,
+                            width: cols[2],
+                            color: t.text,
+                            whiteSpace: "nowrap",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {a.what}
+                        </text>
+                        <text style={{ fontSize: fs.md, width: cols[3], color: t.faint, whiteSpace: "nowrap" }}>
+                          {a.old_hash
+                            ? `${a.old_hash.slice(0, 6)} → ${a.new_hash.slice(0, 6)}`
+                            : `new ${a.new_hash.slice(0, 6)}`}
+                        </text>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
         </>
       )}
     </div>

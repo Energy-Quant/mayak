@@ -1,5 +1,5 @@
 /**
- * PantheonRoleBadge — индикатор активной личности (порт без DOM).
+ * PantheonRoleBadge — active personality indicator (port without DOM).
  */
 export interface BadgeProps {
   role: "goose" | "oracle" | "librarian" | string;

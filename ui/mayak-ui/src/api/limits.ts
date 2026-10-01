@@ -1,9 +1,14 @@
 /**
- * api/limits.ts — порт limits.rs: лимиты OpenCode Go (5ч/нед/мес).
- * GET https://opencode.ai/zen/go/v1/usage — UA + x-opencode-session обязательны.
+ * api/limits.ts — port of limits.rs: OpenCode Go limits (5h/week/month).
+ * GET https://opencode.ai/zen/go/v1/usage — UA + x-opencode-session are required.
  */
 import { opencodeApiKey } from "./catalog";
 import { AppError, E } from "../errors";
+
+// Single entry points for telemetry: any config change goes through
+// auditConfigChange, any usage sample through recordUsage (see api/db.ts).
+export { auditConfigChange, recordUsage, getRoleUsage, getConfigAudit } from "./db";
+export type { AuditEntry, RoleUsage, UsageInput } from "./db";
 
 export interface UsageWindow {
   status: string;

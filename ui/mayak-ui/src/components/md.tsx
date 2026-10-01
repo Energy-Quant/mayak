@@ -1,10 +1,9 @@
 /**
- * md.tsx — обёртка над host-элементом <markdown> с токенами темы «Волна».
- * Заменяет legacy markdown.ts (dangerouslySetInnerHTML) — без HTML-рендера.
+ * md.tsx — wrapper around the <markdown> host element with "Wave" theme tokens.
+ * Replaces legacy markdown.ts (dangerouslySetInnerHTML) — no HTML rendering.
  */
 import type { GpuixTheme } from "@gpuix/react";
 import { dark, font, type WaveTheme } from "../tokens";
-import { log } from "../logger";
 
 export function mdTheme(t: WaveTheme): GpuixTheme {
   return {
@@ -28,7 +27,7 @@ export function Markdown(props: { source: string; t: WaveTheme }) {
   return <markdown source={props.source} theme={mdTheme(props.t)} />;
 }
 
-/** Курсив для thinking: построчно (italic не переносится между строками в markdown) */
+/** Italic for thinking: line by line (italic does not carry across lines in markdown) */
 export function italicize(src: string): string {
   return (src ?? "")
     .split("\n")
@@ -36,7 +35,7 @@ export function italicize(src: string): string {
     .join("\n");
 }
 
-/** Пользовательский текст: сохраняем \n (строками — GPUI не склеивает) */
+/** User text: preserve \n (GPUI does not join lines) */
 export function UserText(props: { text: string; t: WaveTheme; fontSize: number }) {
   const lines = (props.text ?? "").split("\n");
   return (
@@ -47,8 +46,8 @@ export function UserText(props: { text: string; t: WaveTheme; fontSize: number }
           style={{
             fontSize: props.fontSize,
             color: props.t.text,
-            // GPUIX: lineHeight — ПИКСЕЛИ (renderer.js: fs13 → lh20), не CSS-множитель!
-            // 1.55 (как в CSS) = 1.55px → строки схлопываются и слипаются в одну
+            // GPUIX: lineHeight is PIXELS (renderer.js: fs13 → lh20), not a CSS multiplier!
+            // 1.55 (as in CSS) = 1.55px → lines collapse and stick together
             lineHeight: Math.round(props.fontSize * 1.55),
           }}
         >

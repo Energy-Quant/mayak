@@ -1,8 +1,8 @@
 /**
- * Extensions — расширения MCP из config.yaml (порт с Tauri/CSS на GPUIX).
- * Паритет легаси Extensions.tsx: секции bundled/other, оптимистичный toggle с откатом.
- * API синхронный — прямые вызовы api/config, ошибки → banner (bg error+1f).
- * Toggle экспортируется отдельно — его импортирует Settings.
+ * Extensions — MCP extensions from config.yaml (port from Tauri/CSS to GPUIX).
+ * Parity with legacy Extensions.tsx: bundled/other sections, optimistic toggle with rollback.
+ * The API is synchronous — direct api/config calls, errors → banner (bg error+1f).
+ * Toggle is exported separately — Settings imports it.
  */
 import { useEffect, useState } from "react";
 import {
@@ -12,7 +12,6 @@ import {
 } from "../api/config";
 import { Icon, type IconName } from "./Icon";
 import { dark, fs, type WaveTheme } from "../tokens";
-import { log } from "../logger";
 
 const DEFAULT_EXTS = [
   "analyze", "apps", "autovisualiser", "chatrecall", "chromedevtools",
@@ -24,7 +23,7 @@ function isDefault(name: string): boolean {
   return DEFAULT_EXTS.includes(name);
 }
 
-/** Переключатель (легаси .switch). t опционален — без него палитра dark. */
+/** Toggle switch (legacy .switch). t is optional — defaults to the dark palette. */
 export function Toggle(props: {
   checked: boolean;
   onChange: (v: boolean) => void;
@@ -96,7 +95,7 @@ function Banner(props: { t: WaveTheme; msg: string }) {
   );
 }
 
-/** Статическая кнопка (легаси-паритет: без обработчика, чисто визуально). */
+/** Static button (legacy parity: no handler, purely visual). */
 function Btn(props: { t: WaveTheme; icon: IconName; label: string; primary?: boolean }) {
   const t = props.t;
   return (
@@ -215,7 +214,7 @@ export function Extensions(props: { t: WaveTheme }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Оптимистичный toggle, откат при ошибке (паритет легаси) */
+  /** Optimistic toggle, rollback on error (legacy parity) */
   const flip = (name: string, enabled: boolean) => {
     setExts((xs) => xs.map((x) => (x.name === name ? { ...x, enabled } : x)));
     try {

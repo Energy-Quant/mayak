@@ -1,7 +1,7 @@
 /**
- * Маяк — токены темы «Волна» / «Море внутри» (rev9 из theme.css legacy).
- * GPUIX рисует style-объектами, не CSS: градиенты/blur 1:1 НЕ переносим.
- * Переключение light/dark — без перезагрузки (useState в App).
+ * Mayak theme tokens — "Wave" / "Sea Inside" (rev9 from legacy theme.css).
+ * GPUIX draws with style objects, not CSS: gradients/blur do NOT port 1:1.
+ * light/dark switching — no reload (useState in App).
  */
 
 export type ThemeMode = 'light' | 'dark'
@@ -26,14 +26,14 @@ export interface WaveTheme {
   error: string
   border: string
   borderStrong: string
-  /** приглушённый фон nav/tab-актива (замена grad-nav) */
+  /** muted nav/tab-active background (replaces grad-nav) */
   navActive: string
   userBubble: string
   userBubbleText: string
   selection: string
 }
 
-/** «Малиновый закат» — dark 16:00–10:00 */
+/** "Crimson sunset" — dark 16:00–10:00 */
 export const dark: WaveTheme = {
   bg: '#14122a',
   bgTop: '#1a1330',
@@ -60,7 +60,7 @@ export const dark: WaveTheme = {
   selection: 'rgba(255,79,139,0.35)',
 }
 
-/** «Полдень у залива» — light 10:00–16:00 */
+/** "Bay noon" — light 10:00–16:00 */
 export const light: WaveTheme = {
   bg: '#c5c8dd',
   bgTop: '#b7bed8',
@@ -89,13 +89,13 @@ export const light: WaveTheme = {
 
 export const themes: Record<ThemeMode, WaveTheme> = { dark, light }
 
-/** Автотема по часу: 10:00–16:00 light, иначе dark (как bootstrapTheme в legacy). */
+/** Auto theme by hour: 10:00–16:00 light, otherwise dark (like bootstrapTheme in legacy). */
 export function autoTheme(d = new Date()): ThemeMode {
   const h = d.getHours()
   return h >= 10 && h < 16 ? 'light' : 'dark'
 }
 
-/** Типографическая шкала (модуль ~1.2, из theme.css). */
+/** Typographic scale (module ~1.2, from theme.css). */
 export const fs = {
   xs2: 10.5,
   xs: 11.5,
@@ -108,11 +108,11 @@ export const fs = {
   hero: 60,
 } as const
 
-/** Ритм отступов. */
+/** Spacing rhythm. */
 export const sp = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 24, 6: 32 } as const
 
-/** Радиусы. */
+/** Radii. */
 export const r = { xs: 6, sm: 9, md: 13, lg: 17, xl: 24 } as const
 
-/** Единая гарнитура (установлена системно; fallback GPUI default). */
+/** Single typeface (set system-wide; fallback to GPUI default). */
 export const font = 'Nineteen Ninety Three'
