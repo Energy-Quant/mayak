@@ -27,6 +27,8 @@ jobs:
           bun-version: latest
       - name: Install dependencies
         run: bun install
+      - name: Bootstrap CI fixtures (DBs + config)
+        run: bash scripts/ci-fixtures.sh
       - name: Type check
         run: bunx tsc --noEmit
       - name: Smoke tests
