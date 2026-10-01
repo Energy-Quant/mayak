@@ -24,6 +24,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+      - name: Bootstrap CI fixtures
+        run: bash scripts/ci-fixtures.sh
       - name: Build mayak-ui binary
         working-directory: ui/mayak-ui
         run: |
