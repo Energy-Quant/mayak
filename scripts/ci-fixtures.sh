@@ -52,7 +52,7 @@ SQL
 
 # ── config.yaml (only if missing) ──
 if [ ! -f "$H/.config/goose/config.yaml" ]; then
-  printf 'extensions: {}\n' > "$H/.config/goose/config.yaml"
+  printf 'extensions:\n  opencode_go:\n    enabled: true\n' > "$H/.config/goose/config.yaml"
 fi
 
 # ── pantheon.toml (only if missing) ──
